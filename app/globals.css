@@ -1,0 +1,28 @@
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;500;600;700;800&family=Playfair+Display:wght@600;700&display=swap');
+
+@import "tailwindcss";
+
+:root {
+  --bg-base: #F5F7FB;
+  --bg-card: #FFFFFF;
+  --bg-sidebar: #FFFFFF;
+  --sidebar-border: #E8EDF5;
+  --accent: #4F7FFA;
+  --accent-light: #EEF3FF;
+  --accent-2: #7CB9E8;
+  --text-primary: #1E3A5F;
+  --text-secondary: #6B8CAE;
+  --text-muted: #A8BDD4;
+  --border: #E8EDF5;
+  --success: #34C48B;
+  --warning: #F5A623;
+  --danger: #F06565;
+  --info: #7CB9E8;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Nunito', 'Segoe UI', sans-serif;
+  background: var(--bg-base);
+  color: var(--text-primary);
+}
