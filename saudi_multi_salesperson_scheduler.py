@@ -415,6 +415,10 @@ class SalespersonScheduler:
         if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
             return empty
 
+        print("Status:", solver.StatusName(status))
+        print("Objective value:", solver.ObjectiveValue())   # higher = better schedule
+        print("Best bound:", solver.BestObjectiveBound())    # theoretical maximum possibl
+
         # ---- Extract solution ----
         rows: list[dict[str, Any]] = []
         for cid in customer_ids:

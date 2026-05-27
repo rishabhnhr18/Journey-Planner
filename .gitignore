@@ -33,3 +33,7 @@ next-env.d.ts
 saudi_master_data_output
 frontend_unuse
 assests
+
+*.xlsx
+*.docx
+*.xls
