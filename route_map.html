@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html>
+<head>
+    
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/css/bootstrap.min.css"/>
+    <link rel="stylesheet" href="https://netdna.bootstrapcdn.com/bootstrap/3.0.0/css/bootstrap-glyphicons.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.2.0/css/all.min.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/python-visualization/folium/folium/templates/leaflet.awesome.rotate.min.css"/>
+    
+            <meta name="viewport" content="width=device-width,
+                initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+            <style>
+                #map_b9d0062cedc303306c0747032495b645 {
+                    position: relative;
+                    width: 100.0%;
+                    height: 100.0%;
+                    left: 0.0%;
+                    top: 0.0%;
+                }
+                .leaflet-container { font-size: 1rem; }
+            </style>
+
+            <style>html, body {
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                padding: 0;
+            }
+            </style>
+
+            <style>#map {
+                position:absolute;
+                top:0;
+                bottom:0;
+                right:0;
+                left:0;
+                }
+            </style>
+
+            <script>
+                L_NO_TOUCH = false;
+                L_DISABLE_3D = false;
+            </script>
+
+        
+</head>
+<body>
+    
+    <div style="position:fixed;top:10px;left:60px;z-index:1000;background:white;padding:8px 12px;border-radius:6px;border:1px solid #ccc;font-family:sans-serif;"><b>SAL_RUH_001</b> — 09 Jun 2026&nbsp;|&nbsp;6 legs&nbsp;|&nbsp;Total: 38.69 km</div>
+    
+            <div class="folium-map" id="map_b9d0062cedc303306c0747032495b645" ></div>
+        
+</body>
+<script>
+    
+    
+            var map_b9d0062cedc303306c0747032495b645 = L.map(
+                "map_b9d0062cedc303306c0747032495b645",
+                {
+                    center: [24.795775285714285, 46.65227785714285],
+                    crs: L.CRS.EPSG3857,
+                    ...{
+  "zoom": 13,
+  "zoomControl": true,
+  "preferCanvas": false,
+}
+
+                }
+            );
+
+            
+
+        
+    
+            var tile_layer_48f712984d8c0176dbc18252d89a7b97 = L.tileLayer(
+                "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                {
+  "minZoom": 0,
+  "maxZoom": 19,
+  "maxNativeZoom": 19,
+  "noWrap": false,
+  "attribution": "\u0026copy; \u003ca href=\"https://www.openstreetmap.org/copyright\"\u003eOpenStreetMap\u003c/a\u003e contributors",
+  "subdomains": "abc",
+  "detectRetina": false,
+  "tms": false,
+  "opacity": 1,
+}
+
+            );
+        
+    
+            tile_layer_48f712984d8c0176dbc18252d89a7b97.addTo(map_b9d0062cedc303306c0747032495b645);
+        
+    
+            var poly_line_78abd6fa7cc0ecb17a80264e7db2f555 = L.polyline(
+                [[24.579, 46.8237], [24.823618, 46.63431]],
+                {"bubblingMouseEvents": true, "color": "navy", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "navy", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.85, "smoothFactor": 1.0, "stroke": true, "weight": 3}
+            ).addTo(map_b9d0062cedc303306c0747032495b645);
+        
+    
+            var marker_345432f61bbf03d15b837708b1d4e476 = L.marker(
+                [24.701309000000002, 46.729005],
+                {
+}
+            ).addTo(map_b9d0062cedc303306c0747032495b645);
+        
+    
+            var div_icon_9410ae360746e732344dbed3016b3bd2 = L.divIcon({
+  "html": "\u003cdiv style=\"background:rgba(255,255,255,0.88);padding:1px 5px;border-radius:3px;font-size:10px;color:#003;white-space:nowrap;\"\u003e33.26 km\u003c/div\u003e",
+  "iconSize": [70, 18],
+  "iconAnchor": [35, 9],
+  "className": "empty",
+});
+        
+    
+            marker_345432f61bbf03d15b837708b1d4e476.bindTooltip(
+                `<div>
+                     Leg 0→1: 33.26 km (62 min)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+                marker_345432f61bbf03d15b837708b1d4e476.setIcon(div_icon_9410ae360746e732344dbed3016b3bd2);
+            
+    
+            var poly_line_3b0baf4ef396e70860a8f3d2fc467ab4 = L.polyline(
+                [[24.823618, 46.63431], [24.826801, 46.630947]],
+                {"bubblingMouseEvents": true, "color": "navy", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "navy", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.85, "smoothFactor": 1.0, "stroke": true, "weight": 3}
+            ).addTo(map_b9d0062cedc303306c0747032495b645);
+        
+    
+            var marker_cae0b66ec03afc9e7039dc7c5e6efdf5 = L.marker(
+                [24.8252095, 46.632628499999996],
+                {
+}
+            ).addTo(map_b9d0062cedc303306c0747032495b645);
+        
+    
+            var div_icon_698e1eb6a2cb27c8c43e42a17b77736c = L.divIcon({
+  "html": "\u003cdiv style=\"background:rgba(255,255,255,0.88);padding:1px 5px;border-radius:3px;font-size:10px;color:#003;white-space:nowrap;\"\u003e0.49 km\u003c/div\u003e",
+  "iconSize": [70, 18],
+  "iconAnchor": [35, 9],
+  "className": "empty",
+});
+        
+    
+            marker_cae0b66ec03afc9e7039dc7c5e6efdf5.bindTooltip(
+                `<div>
+                     Leg 1→2: 0.49 km (1 min)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+                marker_cae0b66ec03afc9e7039dc7c5e6efdf5.setIcon(div_icon_698e1eb6a2cb27c8c43e42a17b77736c);
+            
+    
+            var poly_line_b5b4760416dac5afe48eba5208a0fea8 = L.polyline(
+                [[24.826801, 46.630947], [24.83, 46.629276]],
+                {"bubblingMouseEvents": true, "color": "navy", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "navy", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.85, "smoothFactor": 1.0, "stroke": true, "weight": 3}
+            ).addTo(map_b9d0062cedc303306c0747032495b645);
+        
+    
+            var marker_4bb6d121c6de839804a42873b6aaa4fb = L.marker(
+                [24.8284005, 46.6301115],
+                {
+}
+            ).addTo(map_b9d0062cedc303306c0747032495b645);
+        
+    
+            var div_icon_52c33e41b50f77184174c2e93c9ceea1 = L.divIcon({
+  "html": "\u003cdiv style=\"background:rgba(255,255,255,0.88);padding:1px 5px;border-radius:3px;font-size:10px;color:#003;white-space:nowrap;\"\u003e0.39 km\u003c/div\u003e",
+  "iconSize": [70, 18],
+  "iconAnchor": [35, 9],
+  "className": "empty",
+});
+        
+    
+            marker_4bb6d121c6de839804a42873b6aaa4fb.bindTooltip(
+                `<div>
+                     Leg 2→3: 0.39 km (1 min)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+                marker_4bb6d121c6de839804a42873b6aaa4fb.setIcon(div_icon_52c33e41b50f77184174c2e93c9ceea1);
+            
+    
+            var poly_line_e004b171ee199f27b2ff2b4fa2cff66f = L.polyline(
+                [[24.83, 46.629276], [24.839363, 46.630998]],
+                {"bubblingMouseEvents": true, "color": "navy", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "navy", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.85, "smoothFactor": 1.0, "stroke": true, "weight": 3}
+            ).addTo(map_b9d0062cedc303306c0747032495b645);
+        
+    
+            var marker_367a0c0b8ff3f86e8f6a3ba84dd7f7ce = L.marker(
+                [24.8346815, 46.630137],
+                {
+}
+            ).addTo(map_b9d0062cedc303306c0747032495b645);
+        
+    
+            var div_icon_32a6ef1add53939ef7f46f42fdc640f2 = L.divIcon({
+  "html": "\u003cdiv style=\"background:rgba(255,255,255,0.88);padding:1px 5px;border-radius:3px;font-size:10px;color:#003;white-space:nowrap;\"\u003e1.06 km\u003c/div\u003e",
+  "iconSize": [70, 18],
+  "iconAnchor": [35, 9],
+  "className": "empty",
+});
+        
+    
+            marker_367a0c0b8ff3f86e8f6a3ba84dd7f7ce.bindTooltip(
+                `<div>
+                     Leg 3→4: 1.06 km (2 min)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+                marker_367a0c0b8ff3f86e8f6a3ba84dd7f7ce.setIcon(div_icon_32a6ef1add53939ef7f46f42fdc640f2);
+            
+    
+            var poly_line_bb8826347c8ffc60a8d319ef904cef6d = L.polyline(
+                [[24.839363, 46.630998], [24.84182, 46.610254]],
+                {"bubblingMouseEvents": true, "color": "navy", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "navy", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.85, "smoothFactor": 1.0, "stroke": true, "weight": 3}
+            ).addTo(map_b9d0062cedc303306c0747032495b645);
+        
+    
+            var marker_a8d6b2e2cb78b23b1e93da8b13b757bf = L.marker(
+                [24.8405915, 46.620626],
+                {
+}
+            ).addTo(map_b9d0062cedc303306c0747032495b645);
+        
+    
+            var div_icon_8a05b94f999bff0e4dd4be619d979c68 = L.divIcon({
+  "html": "\u003cdiv style=\"background:rgba(255,255,255,0.88);padding:1px 5px;border-radius:3px;font-size:10px;color:#003;white-space:nowrap;\"\u003e2.11 km\u003c/div\u003e",
+  "iconSize": [70, 18],
+  "iconAnchor": [35, 9],
+  "className": "empty",
+});
+        
+    
+            marker_a8d6b2e2cb78b23b1e93da8b13b757bf.bindTooltip(
+                `<div>
+                     Leg 4→5: 2.11 km (4 min)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+                marker_a8d6b2e2cb78b23b1e93da8b13b757bf.setIcon(div_icon_8a05b94f999bff0e4dd4be619d979c68);
+            
+    
+            var poly_line_6d4dfd9ca7c9bee00e1f898a4b3a65c3 = L.polyline(
+                [[24.84182, 46.610254], [24.829825, 46.60646]],
+                {"bubblingMouseEvents": true, "color": "navy", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "navy", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.85, "smoothFactor": 1.0, "stroke": true, "weight": 3}
+            ).addTo(map_b9d0062cedc303306c0747032495b645);
+        
+    
+            var marker_7b70227a34a87c68c213dc77ab01280a = L.marker(
+                [24.8358225, 46.608357],
+                {
+}
+            ).addTo(map_b9d0062cedc303306c0747032495b645);
+        
+    
+            var div_icon_d44fc2edbb9ef60f1d8f9de1ab09a913 = L.divIcon({
+  "html": "\u003cdiv style=\"background:rgba(255,255,255,0.88);padding:1px 5px;border-radius:3px;font-size:10px;color:#003;white-space:nowrap;\"\u003e1.39 km\u003c/div\u003e",
+  "iconSize": [70, 18],
+  "iconAnchor": [35, 9],
+  "className": "empty",
+});
+        
+    
+            marker_7b70227a34a87c68c213dc77ab01280a.bindTooltip(
+                `<div>
+                     Leg 5→6: 1.39 km (3 min)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+                marker_7b70227a34a87c68c213dc77ab01280a.setIcon(div_icon_d44fc2edbb9ef60f1d8f9de1ab09a913);
+            
+    
+            var marker_a59c24f161048d1b1b2bb69a55011968 = L.marker(
+                [24.579, 46.8237],
+                {
+}
+            ).addTo(map_b9d0062cedc303306c0747032495b645);
+        
+    
+            var icon_0f235321addba457674e3a818413bf06 = L.AwesomeMarkers.icon(
+                {
+  "markerColor": "black",
+  "iconColor": "white",
+  "icon": "home",
+  "prefix": "fa",
+  "extraClasses": "fa-rotate-0",
+}
+            );
+        
+    
+        var popup_e7d8fc834785557add7de3d8d05624da = L.popup({
+  "maxWidth": "100%",
+});
+
+        
+            
+                var html_f5d07018644722f1243aacb93b51757c = $(`<div id="html_f5d07018644722f1243aacb93b51757c" style="width: 100.0%; height: 100.0%;"><b>Warehouse</b><br>Route start</div>`)[0];
+                popup_e7d8fc834785557add7de3d8d05624da.setContent(html_f5d07018644722f1243aacb93b51757c);
+            
+        
+
+        marker_a59c24f161048d1b1b2bb69a55011968.bindPopup(popup_e7d8fc834785557add7de3d8d05624da)
+        ;
+
+        
+    
+    
+            marker_a59c24f161048d1b1b2bb69a55011968.bindTooltip(
+                `<div>
+                     🏭 Warehouse (start of route)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+                marker_a59c24f161048d1b1b2bb69a55011968.setIcon(icon_0f235321addba457674e3a818413bf06);
+            
+    
+            var marker_8896701398337c6693b46453226d0b35 = L.marker(
+                [24.823618, 46.63431],
+                {
+}
+            ).addTo(map_b9d0062cedc303306c0747032495b645);
+        
+    
+            var div_icon_071eb478c7fa7e60a266e4ce8fc32604 = L.divIcon({
+  "html": "\u003cdiv style=\"background:gray;color:white;border-radius:50%;width:26px;height:26px;text-align:center;line-height:26px;font-weight:bold;font-size:11px;\"\u003e1\u003c/div\u003e",
+  "className": "empty",
+});
+        
+    
+            marker_8896701398337c6693b46453226d0b35.bindTooltip(
+                `<div>
+                     1. Al Anazi Roastery [Low] leg=33.26 km
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+                marker_8896701398337c6693b46453226d0b35.setIcon(div_icon_071eb478c7fa7e60a266e4ce8fc32604);
+            
+    
+            var marker_cc3329a20573b32c4de8e550442193d7 = L.marker(
+                [24.826801, 46.630947],
+                {
+}
+            ).addTo(map_b9d0062cedc303306c0747032495b645);
+        
+    
+            var div_icon_706fa92cd2cf4498ed6813d2b66a738b = L.divIcon({
+  "html": "\u003cdiv style=\"background:orange;color:white;border-radius:50%;width:26px;height:26px;text-align:center;line-height:26px;font-weight:bold;font-size:11px;\"\u003e2\u003c/div\u003e",
+  "className": "empty",
+});
+        
+    
+            marker_cc3329a20573b32c4de8e550442193d7.bindTooltip(
+                `<div>
+                     2. Al Waha Kitchen [Medium] leg=0.49 km
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+                marker_cc3329a20573b32c4de8e550442193d7.setIcon(div_icon_706fa92cd2cf4498ed6813d2b66a738b);
+            
+    
+            var marker_0dbb79e2428a9636e746cf42f1eee24e = L.marker(
+                [24.83, 46.629276],
+                {
+}
+            ).addTo(map_b9d0062cedc303306c0747032495b645);
+        
+    
+            var div_icon_4f64ddfbf97af9099e88169d28d5cab9 = L.divIcon({
+  "html": "\u003cdiv style=\"background:red;color:white;border-radius:50%;width:26px;height:26px;text-align:center;line-height:26px;font-weight:bold;font-size:11px;\"\u003e3\u003c/div\u003e",
+  "className": "empty",
+});
+        
+    
+            marker_0dbb79e2428a9636e746cf42f1eee24e.bindTooltip(
+                `<div>
+                     3. Al Khaleej Roastery [High] leg=0.39 km
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+                marker_0dbb79e2428a9636e746cf42f1eee24e.setIcon(div_icon_4f64ddfbf97af9099e88169d28d5cab9);
+            
+    
+            var marker_66c14d317a35c12fd27b8f8084ceb270 = L.marker(
+                [24.839363, 46.630998],
+                {
+}
+            ).addTo(map_b9d0062cedc303306c0747032495b645);
+        
+    
+            var div_icon_c94d2fe21bc04456785806edf648e978 = L.divIcon({
+  "html": "\u003cdiv style=\"background:red;color:white;border-radius:50%;width:26px;height:26px;text-align:center;line-height:26px;font-weight:bold;font-size:11px;\"\u003e4\u003c/div\u003e",
+  "className": "empty",
+});
+        
+    
+            marker_66c14d317a35c12fd27b8f8084ceb270.bindTooltip(
+                `<div>
+                     4. Al Rashid Trading Oven [High] leg=1.06 km
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+                marker_66c14d317a35c12fd27b8f8084ceb270.setIcon(div_icon_c94d2fe21bc04456785806edf648e978);
+            
+    
+            var marker_9c32385eed5cdae249e3fa7db21ee52b = L.marker(
+                [24.84182, 46.610254],
+                {
+}
+            ).addTo(map_b9d0062cedc303306c0747032495b645);
+        
+    
+            var div_icon_d60a4857d0016ce18dd294569896b0d3 = L.divIcon({
+  "html": "\u003cdiv style=\"background:gray;color:white;border-radius:50%;width:26px;height:26px;text-align:center;line-height:26px;font-weight:bold;font-size:11px;\"\u003e5\u003c/div\u003e",
+  "className": "empty",
+});
+        
+    
+            marker_9c32385eed5cdae249e3fa7db21ee52b.bindTooltip(
+                `<div>
+                     5. Al Nada Fresh Hotel Kitchen [Low] leg=2.11 km
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+                marker_9c32385eed5cdae249e3fa7db21ee52b.setIcon(div_icon_d60a4857d0016ce18dd294569896b0d3);
+            
+    
+            var marker_4119c4a96ab92dca42cd5919838dbaf2 = L.marker(
+                [24.829825, 46.60646],
+                {
+}
+            ).addTo(map_b9d0062cedc303306c0747032495b645);
+        
+    
+            var div_icon_9520fcca170cc50672b305425370a53f = L.divIcon({
+  "html": "\u003cdiv style=\"background:red;color:white;border-radius:50%;width:26px;height:26px;text-align:center;line-height:26px;font-weight:bold;font-size:11px;\"\u003e6\u003c/div\u003e",
+  "className": "empty",
+});
+        
+    
+            marker_4119c4a96ab92dca42cd5919838dbaf2.bindTooltip(
+                `<div>
+                     6. Al Shehri Trading Restaurant [High] leg=1.39 km
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+                marker_4119c4a96ab92dca42cd5919838dbaf2.setIcon(div_icon_9520fcca170cc50672b305425370a53f);
+            
+</script>
+</html>
