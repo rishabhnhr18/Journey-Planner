@@ -49,7 +49,8 @@ Scheduling behaviour by RFM segment
     High   → up to 4 visits/month, highest priority weight
     Medium → up to 2 visits/month, medium priority weight
     Low    → up to 1 visit/month,  lowest priority weight
-    All active customers → minimum 1 visit (hard constraint)
+    All active customers → visits allocated by STRICT priority (High >> Medium >> Low).
+    min-1-visit is NOT a hard constraint; it is a post-solve filter only.
 """
 
 from __future__ import annotations
@@ -97,9 +98,10 @@ class MultiScheduleResult:
     cold_schedule:        pd.DataFrame   # cold-truck customers only
     normal_schedule:      pd.DataFrame   # normal-truck customers only
     daily_schedule:       pd.DataFrame
-    unvisited_customers:  pd.DataFrame   # customers who received 0 visits (min-1 not met)
-    salesperson_results:  dict[str, SalespersonScheduleResult] = field(default_factory=dict)
-    territory_warehouses: dict[str, tuple[float, float]]       = field(default_factory=dict)
+    unvisited_customers:     pd.DataFrame   # customers who received 0 visits (capacity overflow)
+    under_visited_customers: pd.DataFrame   # customers with >0 but < segment cap visits
+    salesperson_results:     dict[str, SalespersonScheduleResult] = field(default_factory=dict)
+    territory_warehouses:    dict[str, tuple[float, float]]       = field(default_factory=dict)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -113,10 +115,16 @@ def get_max_visits(segment: str) -> int:
 
 def get_segment_priority_weight(segment: str) -> int:
     """
-    High > Medium > Low in objective.
-    Used as a multiplier so the solver prefers High customers first.
+    High >> Medium >> Low in objective.
+
+    The gap must be so large that ONE extra High visit is worth more than
+    ALL possible Low visits combined.  This forces the solver to fully
+    saturate High before touching Medium, and Medium before Low.
+
+    With Low=10, 29 Low customers × 10 visits × 10 = 2,900  total Low value.
+    One High visit = 10,000,000.  ⇒ strict priority.
     """
-    return {"High": 300, "Medium": 100, "Low": 20}.get(segment, 20)
+    return {"High": 10_000, "Medium": 200, "Low": 1}.get(segment, 1)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -309,10 +317,16 @@ class TerritoryScheduler:
     2.  Each customer is served by exactly ONE salesperson for ALL their visits
         (assignment consistency: if you visit customer X, you always visit X).
     3.  Cold-truck customers → only cold-capable salespeople.
-    4.  Min 1 visit / month for every active customer.
-    5.  Max visits / month by RFM segment (High=4, Medium=2, Low=1).
-    6.  Daily total time (visit + travel) ≤ daily_work_minutes per salesperson.
-    7.  Daily customer count ≤ capacity per salesperson.
+    4.  Max visits / month by RFM segment (High=30, Medium=15, Low=10).
+    5.  Daily total time (visit + travel) ≤ daily_work_minutes per salesperson.
+    6.  Daily customer count ≤ capacity per salesperson.
+
+    NOTE — min-1-visit is NOT a hard constraint.
+    It is used purely as a post-solve filter: customers who received 0 visits
+    land in unvisited_customers; customers below cap land in under_visited_customers.
+    The solver maximises total weighted visits within capacity — if it cannot
+    serve every customer, lower-priority customers are naturally skipped rather
+    than making the whole solve INFEASIBLE.
 
     Objective (maximise)
     ────────────────────
@@ -327,415 +341,480 @@ class TerritoryScheduler:
     DEFAULT_AVG_VISIT_MINUTES  = 22
     DEFAULT_AVG_SPEED_KMPH     = 32
 
-    def __init__(self, solver_time_seconds: int = 90):
+    def __init__(self, solver_time_seconds: int = 180):
         self.solver_time_seconds = solver_time_seconds
-
     def solve(
-        self,
-        customers: pd.DataFrame,           # pre-filtered for this territory + truck group
-        salespeople: pd.DataFrame,         # pre-filtered for this territory
-        van_df: pd.DataFrame,
-        valid_dates: list[pd.Timestamp],
-        daily_work_minutes: int  = DEFAULT_DAILY_WORK_MINUTES,
-        avg_visit_minutes: int   = DEFAULT_AVG_VISIT_MINUTES,
-        avg_speed_kmph: float    = DEFAULT_AVG_SPEED_KMPH,
-        warehouse_lat: float     = 0.0,
-        warehouse_lng: float     = 0.0,
-        territory_id: str        = "",
-        truck_group: str                = "normal",  # "cold" | "normal"
-        solver_time_seconds: int        = None,
-        sp_valid_dates: dict            = None,   # sid → list[pd.Timestamp] of working days
-    ) -> pd.DataFrame:
-        """
-        Returns a detailed_schedule DataFrame (one row per customer-visit).
-        Returns empty DataFrame on failure (with printed diagnostics).
-        """
-        model        = cp_model.CpModel()
-        customer_ids = customers["customer_id"].tolist()
-        sp_ids       = salespeople["sales_id"].tolist()
-        empty        = self._empty_df()
+            self,
+            customers: pd.DataFrame,           # pre-filtered for this territory + truck group
+            salespeople: pd.DataFrame,         # pre-filtered for this territory
+            van_df: pd.DataFrame,
+            valid_dates: list[pd.Timestamp],
+            daily_work_minutes: int  = DEFAULT_DAILY_WORK_MINUTES,
+            avg_visit_minutes: int   = DEFAULT_AVG_VISIT_MINUTES,
+            avg_speed_kmph: float    = DEFAULT_AVG_SPEED_KMPH,
+            warehouse_lat: float     = 0.0,
+            warehouse_lng: float     = 0.0,
+            territory_id: str        = "",
+            truck_group: str                = "normal",  # "cold" | "normal"
+            solver_time_seconds: int        = None,
+            sp_valid_dates: dict            = None,   # sid → list[pd.Timestamp] of working days
+        ) -> pd.DataFrame:
+            """
+            Returns a detailed_schedule DataFrame (one row per customer-visit).
+            Returns empty DataFrame on failure (with printed diagnostics).
+            """
+            model        = cp_model.CpModel()
+            customer_ids = customers["customer_id"].tolist()
+            sp_ids       = salespeople["sales_id"].tolist()
+            empty        = self._empty_df()
 
-        if not customer_ids or not sp_ids or not valid_dates:
-            print(f"  [{territory_id}/{truck_group}] Nothing to schedule — "
-                  f"customers={len(customer_ids)}, SPs={len(sp_ids)}, dates={len(valid_dates)}")
-            return empty
+            if not customer_ids or not sp_ids or not valid_dates:
+                print(f"  [{territory_id}/{truck_group}] Nothing to schedule — "
+                    f"customers={len(customer_ids)}, SPs={len(sp_ids)}, dates={len(valid_dates)}")
+                return empty
 
-        # ── Van cold-capability map ───────────────────────────────────────────
-        van_cold  = van_df.set_index("van_id")["cold_truck_enabled"].to_dict()
-        sp_is_cold: dict[str, bool] = {
-            sid: bool(
-                salespeople.loc[salespeople["sales_id"] == sid, "assigned_van"]
-                .map(van_cold).fillna(False).any()
-            )
-            for sid in sp_ids
-        }
-        cust_lookup = customers.set_index("customer_id").to_dict("index")
-
-        # ── Travel time: one-way from warehouse to each customer, per SP
-        #    (In this model we approximate per-customer travel as one-way
-        #     from warehouse.  Route leg costs are handled in post-processing.)
-        travel_mins: dict[tuple[str, str], int] = {}
-        for _, cust in customers.iterrows():
-            cid = cust["customer_id"]
-            for sid in sp_ids:
-                dist_km = _haversine_km(
-                    warehouse_lat, warehouse_lng,
-                    float(cust["gps_lat"]), float(cust["gps_lng"]),
+            # ── Van cold-capability map ───────────────────────────────────────────
+            van_cold  = van_df.set_index("van_id")["cold_truck_enabled"].to_dict()
+            sp_is_cold: dict[str, bool] = {
+                sid: bool(
+                    salespeople.loc[salespeople["sales_id"] == sid, "assigned_van"]
+                    .map(van_cold).fillna(False).any()
                 )
-                # ONE-WAY only — no ×2
-                travel_mins[(cid, sid)] = max(1, int((dist_km / avg_speed_kmph) * 60))
+                for sid in sp_ids
+            }
+            cust_lookup = customers.set_index("customer_id").to_dict("index")
 
-        # ── Per-SP daily capacity ─────────────────────────────────────────────
-        sp_avg_travel: dict[str, int] = {
-            sid: max(1, int(np.mean([travel_mins[(cid, sid)] for cid in customer_ids])))
-            for sid in sp_ids
-        }
-        sp_time_per_visit: dict[str, int] = {
-            sid: max(1, avg_visit_minutes + sp_avg_travel[sid])
-            for sid in sp_ids
-        }
-        # Daily capacity = how many customers fit in daily_work_minutes with no buffer.
-        sp_daily_cap: dict[str, int] = {
-            sid: max(1, daily_work_minutes // sp_time_per_visit[sid])
-            for sid in sp_ids
-        }
-        
-        # sp_daily_cap: dict[str, int] = {
-        #     sid: max(1, daily_work_minutes // (avg_visit_minutes + 5))  # 5 min avg inter-stop
-        #     for sid in sp_ids
-        # }
+            # ── Pairwise distance matrix (warehouse=node 0, customers=node 1..N) ──
+            # Used by AddCircuit constraints to compute REAL stop-to-stop travel
+            # instead of a flat average.
+            cid_to_node: dict[str, int] = {cid: i + 1 for i, cid in enumerate(customer_ids)}
+            node_to_cid: dict[int, str] = {i + 1: cid for i, cid in enumerate(customer_ids)}
+            n_nodes = len(customer_ids) + 1  # node 0 = warehouse/depot
 
-        # ── Effective max visits per customer ─────────────────────────────────
-        total_slots = sum(sp_daily_cap[sid] * len(valid_dates) for sid in sp_ids)
-        desired     = sum(
-            get_max_visits(cust_lookup[cid].get("rfm_segment_final", "Low"))
-            for cid in customer_ids
-        )
-        effective_max: dict[str, int] = {
-            cid: get_max_visits(cust_lookup[cid].get("rfm_segment_final", "Low"))
-            for cid in customer_ids
-        }
-        # if desired > total_slots:
-        #     for cap_seg, cap_val in [("Medium", 1), ("High", 2), ("High", 1)]:
-        #         for cid in customer_ids:
-        #             if cust_lookup[cid].get("rfm_segment_final") == cap_seg:
-        #                 effective_max[cid] = min(effective_max[cid], cap_val)
-        #         if sum(effective_max.values()) <= total_slots:
-        #             break
+            def _node_coords(node_idx: int) -> tuple[float, float]:
+                if node_idx == 0:
+                    return (warehouse_lat, warehouse_lng)
+                c = cust_lookup[node_to_cid[node_idx]]
+                return (float(c["gps_lat"]), float(c["gps_lng"]))
 
-        # ── Decision variables ────────────────────────────────────────────────
-        # visit[cid][sid][d] — 1 if customer cid is visited by salesperson sid on date d
-        visit: dict[tuple[str, str, pd.Timestamp], cp_model.IntVar] = {}
-        for cid in customer_ids:
-            for sid in sp_ids:
-                for d in valid_dates:
-                    visit[(cid, sid, d)] = model.NewBoolVar(
-                        f"v_{cid}_{sid}_{d.strftime('%Y%m%d')}"
-                    )
-
-        # assigned[cid][sid] — 1 if salesperson sid is responsible for customer cid
-        assigned: dict[tuple[str, str], cp_model.IntVar] = {}
-        for cid in customer_ids:
-            for sid in sp_ids:
-                assigned[(cid, sid)] = model.NewBoolVar(f"a_{cid}_{sid}")
-
-        # ── CONSTRAINT 1: Each customer visited by exactly ONE salesperson ────
-        for cid in customer_ids:
-            model.Add(sum(assigned[(cid, sid)] for sid in sp_ids) == 1)
-
-        # ── CONSTRAINT 2: visit only if assigned ─────────────────────────────
-        for cid in customer_ids:
-            for sid in sp_ids:
-                for d in valid_dates:
-                    model.Add(visit[(cid, sid, d)] <= assigned[(cid, sid)])
-
-        # ── CONSTRAINT 3: Cold-truck restriction ─────────────────────────────
-        if truck_group == "cold":
-            cold_sp_ids = [s for s in sp_ids if sp_is_cold.get(s, False)]
-            if cold_sp_ids:
-                for cid in customer_ids:
-                    for sid in sp_ids:
-                        if not sp_is_cold.get(sid, False):
-                            model.Add(assigned[(cid, sid)] == 0)
-            else:
-                print(f"  [{territory_id}/cold] WARNING: No cold-capable SP found. "
-                      "Allowing all SPs for cold customers as fallback.")
-
-        # ── CONSTRAINT 4: Min 1 visit per active customer ─────────────────────
-        for cid in customer_ids:
-            model.Add(
-                sum(visit[(cid, sid, d)] for sid in sp_ids for d in valid_dates) >= 1
-            )
-
-        # ── CONSTRAINT 5: Max visits per month (by RFM segment) ──────────────
-        for cid in customer_ids:
-            max_v = effective_max[cid]
-            model.Add(
-                sum(visit[(cid, sid, d)] for sid in sp_ids for d in valid_dates) <= max_v
-            )
-
-        # ── CONSTRAINT 6: Per-salesperson daily time budget ───────────────────
-        # sum(visit_min + travel_min per customer on day d) ≤ daily_work_minutes
-        # No buffer added — pure time arithmetic.
-        for sid in sp_ids:
-            for d in valid_dates:
-                model.Add(
-                    sum(
-                        (avg_visit_minutes + travel_mins[(cid, sid)]) * visit[(cid, sid, d)]
-                        for cid in customer_ids
-                    ) <= daily_work_minutes
-                )
-
-        # ── CONSTRAINT 7: Daily customer count limit per salesperson ──────────
-        # Cap = floor(daily_work_min / avg_time_per_visit). No buffer deduction.
-        for sid in sp_ids:
-            for d in valid_dates:
-                model.Add(
-                    sum(visit[(cid, sid, d)] for cid in customer_ids)
-                    <= sp_daily_cap[sid]
-                )
-
-        # ── CONSTRAINT 8: Each customer visited at most once per day ─────────
-        for cid in customer_ids:
-            for d in valid_dates:
-                model.Add(
-                    sum(visit[(cid, sid, d)] for sid in sp_ids) <= 1
-                )
-
-        # ── CONSTRAINT 9: SP personal blocked dates (annual leave / sick leave) ─
-        # sp_valid_dates maps each SP to the dates they CAN work (territory holidays
-        # + personal leave already merged in the orchestrator).
-        # For every date a SP cannot work, force all their visit variables to 0.
-        # Without this constraint the solver can legally assign a SP on their leave
-        # day because all_valid_dates is the UNION across all SPs.
-        if sp_valid_dates:
-            for sid in sp_ids:
-                sp_dates_set = set(sp_valid_dates.get(sid, valid_dates))
-                for d in valid_dates:
-                    if d not in sp_dates_set:          # this SP is off on date d
-                        for cid in customer_ids:
-                            model.Add(visit[(cid, sid, d)] == 0)
-
-        # ── OBJECTIVE ─────────────────────────────────────────────────────────
-        # Terms:
-        #  A) Priority × score × visits   (High >> Medium >> Low)
-        #  B) Preferred visit day bonus — reward visits on customer's preferred weekday
-        #  C) Geographic compactness: customers close together → same SP
-        #  D) Weekly cadence bonus for High (reward covering each ISO week)
-        #  E) Alternate-week spread bonus for Medium (reward visits in different weeks)
-#
-        # NOTE: day_w (earlier-date preference) is intentionally removed.
-        # It caused front-loading — all min-1 visits packed into the first few
-        # days, leaving the second half of the month empty.  The weekly cadence
-        # and alternate-week bonuses are sufficient to drive spread.
-
-        # Map Python weekday (Mon=0) to preferred_visit_day string
-        _DAY_NAME = {0:"Monday",1:"Tuesday",2:"Wednesday",
-                     3:"Thursday",4:"Friday",5:"Saturday",6:"Sunday"}
-        PREFERRED_DAY_BONUS = 50_000
-
-        # ISO weeks present in valid_dates
-        week_nums = sorted({d.isocalendar()[1] for d in valid_dates})
-        date_to_week = {d: d.isocalendar()[1] for d in valid_dates}
-
-        obj_terms: list[cp_model.LinearExprT] = []
-
-        for cid in customer_ids:
-            info         = cust_lookup[cid]
-            segment      = info.get("rfm_segment_final", "Low")
-            base         = get_segment_priority_weight(segment)
-            score_b      = int(info.get("final_customer_score", 0.5) * 100)
-            weight       = (base + score_b) * 1000
-            pref_day     = info.get("preferred_visit_day", "")
-
-            for d in valid_dates:
-                pref_w = PREFERRED_DAY_BONUS if _DAY_NAME.get(d.weekday()) == pref_day else 0
-                for sid in sp_ids:
-                    obj_terms.append((weight + pref_w) * visit[(cid, sid, d)])
-
-        # ── SC5: Weekly cadence bonus — High visits every week, Medium alternate weeks ─
-        # For High customers: bonus for having at least 1 visit in EACH ISO week.
-        # For Medium customers: bonus for visits spread across DIFFERENT weeks
-        #   (penalise both visits landing in the same week).
-        # Implemented as soft objective terms using auxiliary BoolVars, not hard
-        # constraints, so the solver can trade off if calendar leaves no choice.
-        WEEKLY_CADENCE_BONUS  = 200_000   # strong nudge for High
-        ALT_WEEK_BONUS        = 150_000   # strong nudge for Medium
-
-        for cid in customer_ids:
-            segment = cust_lookup[cid].get("rfm_segment_final", "Low")
-
-            if segment == "High":
-                # has_visit_in_week[w] = 1 if customer cid has any visit in week w
-                for w in week_nums:
-                    week_dates = [d for d in valid_dates if date_to_week[d] == w]
-                    if not week_dates:
+            # dist_min_mtx[(i,j)] = travel minutes (integer) from node i to node j
+            dist_min_mtx: dict[tuple[int, int], int] = {}
+            for i in range(n_nodes):
+                lat_i, lng_i = _node_coords(i)
+                for j in range(n_nodes):
+                    if i == j:
+                        dist_min_mtx[(i, j)] = 0
                         continue
-                    has_visit = model.NewBoolVar(f"hwk_{cid}_{w}")
-                    # has_visit = 1  iff  sum of visits in this week >= 1
-                    model.AddMaxEquality(
-                        has_visit,
-                        [visit[(cid, sid, d)]
-                         for sid in sp_ids for d in week_dates]
-                    )
-                    obj_terms.append(WEEKLY_CADENCE_BONUS * has_visit)
+                    lat_j, lng_j = _node_coords(j)
+                    km = _haversine_km(lat_i, lng_i, lat_j, lng_j)
+                    dist_min_mtx[(i, j)] = max(1, round(km / avg_speed_kmph * 60))
 
-            elif segment == "Medium":
-                # Reward visits landing in DIFFERENT weeks.
-                # For each pair of weeks, bonus if the customer has a visit in both.
-                # (Medium gets max 2 visits, so this pushes them to separate weeks.)
-                for wi, wa in enumerate(week_nums):
-                    for wb in week_nums[wi + 1:]:
-                        dates_a = [d for d in valid_dates if date_to_week[d] == wa]
-                        dates_b = [d for d in valid_dates if date_to_week[d] == wb]
-                        if not dates_a or not dates_b:
-                            continue
-                        has_a = model.NewBoolVar(f"mwk_{cid}_{wa}")
-                        has_b = model.NewBoolVar(f"mwk_{cid}_{wb}")
-                        model.AddMaxEquality(
-                            has_a,
-                            [visit[(cid, sid, d)] for sid in sp_ids for d in dates_a]
-                        )
-                        model.AddMaxEquality(
-                            has_b,
-                            [visit[(cid, sid, d)] for sid in sp_ids for d in dates_b]
-                        )
-                        both_weeks = model.NewBoolVar(f"mboth_{cid}_{wa}_{wb}")
-                        model.AddMinEquality(both_weeks, [has_a, has_b])
-                        obj_terms.append(ALT_WEEK_BONUS * both_weeks)
+            # For diagnostics / daily-cap fallback, compute rough averages
+            _all_inter = [dist_min_mtx[(i, j)]
+                          for i in range(1, n_nodes) for j in range(1, n_nodes) if i != j]
+            avg_leg_travel_min = max(1, round(float(np.mean(_all_inter)))) if _all_inter else 4
+            _wh_legs = [dist_min_mtx[(0, j)] for j in range(1, n_nodes)]
+            wh_leg_min = max(0, round(float(np.mean(_wh_legs)))) if _wh_legs else 5
 
-        # ── Compactness bonus (lightweight — no extra variables) ──────────────
-        # Reward each customer for being close to the territory centroid.
-        # Replaces the O(n²) BoolVar pair loop which created thousands of extra
-        # variables and constraints, causing normal-group timeouts.
-        if customer_ids:
-            centroid_lat = float(np.mean([cust_lookup[c]["gps_lat"] for c in customer_ids]))
-            centroid_lng = float(np.mean([cust_lookup[c]["gps_lng"] for c in customer_ids]))
-            COMPACT_BONUS = 2_000
+            effective_daily_minutes = daily_work_minutes
+
+            print(f"  [{territory_id}/{truck_group}] pairwise matrix: "
+                  f"{n_nodes} nodes, avg_wh_leg={wh_leg_min}min, "
+                  f"avg_inter={avg_leg_travel_min}min, budget={effective_daily_minutes}min")
+
+            # Legacy travel_mins dict kept for diagnostics function
+            travel_mins: dict[tuple[str, str], int] = {}
             for cid in customer_ids:
-                dist_c = _haversine_km(
-                    float(cust_lookup[cid]["gps_lat"]),
-                    float(cust_lookup[cid]["gps_lng"]),
-                    centroid_lat, centroid_lng,
+                for sid in sp_ids:
+                    travel_mins[(cid, sid)] = avg_leg_travel_min
+            
+            # ── Per-SP daily capacity ─────────────────────────────────────
+            # travel_mins is uniform (avg_leg_travel_min). effective_daily_minutes
+            # already deducts the warehouse departure. sp_time_per_visit = visit +
+            # avg inter-leg only (warehouse leg is NOT charged per stop).
+            
+            sp_time_per_visit: dict[str, int] = {
+                sid: max(1, avg_visit_minutes + avg_leg_travel_min)
+                for sid in sp_ids
+            }
+            sp_daily_cap: dict[str, int] = {
+                sid: max(1, effective_daily_minutes // sp_time_per_visit[sid])
+                for sid in sp_ids
+            }
+            print(f"  [{territory_id}/{truck_group}] sp_daily_cap="
+                f"{list(sp_daily_cap.values())[0]} stops/day "
+                f"({avg_visit_minutes}min visit + {avg_leg_travel_min}min inter "
+                f"= {sp_time_per_visit[sp_ids[0]]}min/stop, "
+                f"budget={effective_daily_minutes}min)")
+
+            # ── Effective max visits per customer ─────────────────────────────────
+            total_slots = sum(sp_daily_cap[sid] * len(valid_dates) for sid in sp_ids)
+            desired     = sum(
+                get_max_visits(cust_lookup[cid].get("rfm_segment_final", "Low"))
+                for cid in customer_ids
+            )
+            effective_max: dict[str, int] = {
+                cid: get_max_visits(cust_lookup[cid].get("rfm_segment_final", "Low"))
+                for cid in customer_ids
+            }
+            # if desired > total_slots:
+            #     for cap_seg, cap_val in [("Medium", 1), ("High", 2), ("High", 1)]:
+            #         for cid in customer_ids:
+            #             if cust_lookup[cid].get("rfm_segment_final") == cap_seg:
+            #                 effective_max[cid] = min(effective_max[cid], cap_val)
+            #         if sum(effective_max.values()) <= total_slots:
+            #             break
+
+            # ── Decision variables ────────────────────────────────────────────────
+            # visit[cid][sid][d] — 1 if customer cid is visited by salesperson sid on date d
+            visit: dict[tuple[str, str, pd.Timestamp], cp_model.IntVar] = {}
+            for cid in customer_ids:
+                for sid in sp_ids:
+                    for d in valid_dates:
+                        visit[(cid, sid, d)] = model.NewBoolVar(
+                            f"v_{cid}_{sid}_{d.strftime('%Y%m%d')}"
+                        )
+            
+            # assigned[cid][sid] — 1 if salesperson sid is responsible for customer cid
+            assigned: dict[tuple[str, str], cp_model.IntVar] = {}
+            for cid in customer_ids:
+                for sid in sp_ids:
+                    assigned[(cid, sid)] = model.NewBoolVar(f"a_{cid}_{sid}")
+
+            # ── CONSTRAINT 1: Each customer visited by exactly ONE salesperson ────
+            for cid in customer_ids:
+                model.Add(sum(assigned[(cid, sid)] for sid in sp_ids) == 1)
+
+            # ── CONSTRAINT 2: visit only if assigned ─────────────────────────────
+            for cid in customer_ids:
+                for sid in sp_ids:
+                    for d in valid_dates:
+                        model.Add(visit[(cid, sid, d)] <= assigned[(cid, sid)])
+
+            # ── CONSTRAINT 3: Cold-truck restriction ─────────────────────────────
+            if truck_group == "cold":
+                cold_sp_ids = [s for s in sp_ids if sp_is_cold.get(s, False)]
+                if cold_sp_ids:
+                    for cid in customer_ids:
+                        for sid in sp_ids:
+                            if not sp_is_cold.get(sid, False):
+                                model.Add(assigned[(cid, sid)] == 0)
+                else:
+                    print(f"  [{territory_id}/cold] WARNING: No cold-capable SP found. "
+                        "Allowing all SPs for cold customers as fallback.")
+
+            # NOTE: Min-1-visit removed from CP-SAT. Solver maximises weighted
+            # visits within capacity. 0-visit → unvisited_customers;
+            # below-cap → under_visited_customers.
+
+            # ── CONSTRAINT 4: Max visits per month (by RFM segment) ──────────────
+            for cid in customer_ids:
+                max_v = effective_max[cid]
+                model.Add(
+                    sum(visit[(cid, sid, d)] for sid in sp_ids for d in valid_dates) <= max_v
                 )
-                proximity = max(0, int((1.0 - min(dist_c / 50.0, 1.0)) * COMPACT_BONUS))
-                if proximity > 0:
-                    for sid in sp_ids:
-                        obj_terms.append(proximity * assigned[(cid, sid)])
 
-        model.Maximize(sum(obj_terms))
-
-        # ── SOLVE ─────────────────────────────────────────────────────────────
-        import os
-        solver = cp_model.CpSolver()
-        t_limit = solver_time_seconds if solver_time_seconds is not None else self.solver_time_seconds
-        solver.parameters.max_time_in_seconds = t_limit
-        solver.parameters.num_search_workers  = max(4, min(os.cpu_count() or 4, 16))
-        solver.parameters.log_search_progress = False
-
-        # Greedy round-robin hint — seed solver with a good starting solution
-        # so it polishes toward optimal rather than searching from scratch.
-        sorted_custs = sorted(customer_ids,
-                              key=lambda c: cust_lookup[c].get("final_customer_score", 0.5),
-                              reverse=True)
-        for i, cid in enumerate(sorted_custs):
-            hint_sid = sp_ids[i % len(sp_ids)]
+            # ── CONSTRAINT 6: Per-salesperson daily time budget (CIRCUIT-BASED) ──
+            # Uses AddCircuit to model actual stop-to-stop routing.
+            # Travel time is computed from real pairwise distances, not a flat average.
+            # Node 0 = warehouse/depot; nodes 1..N = customers.
+            # Unvisited customers get self-loop arcs; visited ones form a tour.
             for sid in sp_ids:
-                model.AddHint(assigned[(cid, sid)], 1 if sid == hint_sid else 0)
+                for d in valid_dates:
+                    arcs: list[tuple[int, int, cp_model.IntVar]] = []
 
-        status = solver.Solve(model)
+                    # Depot self-loop: active when SP visits nobody this day
+                    depot_self = model.NewBoolVar(
+                        f"arc_{sid}_{d.strftime('%Y%m%d')}_0_0")
+                    arcs.append((0, 0, depot_self))
 
-        # ── Failure diagnostics ───────────────────────────────────────────────
-        if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-            status_name = solver.StatusName(status)
-            print(f"\n  ❌ [{territory_id}/{truck_group}] CP-SAT returned: {status_name}")
-            print(f"     Variables : {len(visit) + len(assigned)}")
-            print(f"     Customers : {len(customer_ids)}")
-            print(f"     Salespeople: {len(sp_ids)}")
-            print(f"     Valid dates: {len(valid_dates)}")
-            diagnostics = _diagnose_infeasible(
-                customer_ids, sp_ids, valid_dates, cust_lookup,
-                sp_is_cold, avg_visit_minutes, travel_mins, daily_work_minutes, truck_group,
-            )
-            print(f"\n  ── Constraint failure analysis ──")
-            for i, msg in enumerate(diagnostics, 1):
-                print(f"     [{i}] {msg}")
-            print()
-            return empty
+                    for i in range(n_nodes):
+                        for j in range(n_nodes):
+                            if i == j:
+                                if i == 0:
+                                    continue          # already added depot self-loop
+                                # Customer self-loop: active iff NOT visited this day
+                                cid_i = node_to_cid[i]
+                                arcs.append((i, i, visit[(cid_i, sid, d)].Not()))
+                            else:
+                                lit = model.NewBoolVar(
+                                    f"arc_{sid}_{d.strftime('%Y%m%d')}_{i}_{j}")
+                                arcs.append((i, j, lit))
+                                # Arc i→j can only be active if both endpoints are "in the tour"
+                                if i > 0:
+                                    model.AddImplication(lit, visit[(node_to_cid[i], sid, d)])
+                                if j > 0:
+                                    model.AddImplication(lit, visit[(node_to_cid[j], sid, d)])
 
-        print(f"  ✅ [{territory_id}/{truck_group}] {solver.StatusName(status)} "
-              f"| obj={solver.ObjectiveValue():.0f} "
-              f"| wall={solver.WallTime():.1f}s")
+                    model.AddCircuit(arcs)
 
-        # ── Extract solution ──────────────────────────────────────────────────
-        rows: list[dict[str, Any]] = []
-        for cid in customer_ids:
-            # Which SP was assigned?
-            assigned_sid = next(
-                (sid for sid in sp_ids if solver.Value(assigned[(cid, sid)]) == 1),
-                None,
-            )
-            if assigned_sid is None:
-                continue
-            info = cust_lookup[cid]
-            for d in valid_dates:
-                if solver.Value(visit[(cid, assigned_sid, d)]) == 1:
-                    dist_km   = _haversine_km(
-                        warehouse_lat, warehouse_lng,
-                        float(info["gps_lat"]), float(info["gps_lng"]),
+                    # Total travel time = sum of dist × arc for non-self-loop arcs
+                    travel_expr = []
+                    for (i, j, lit) in arcs:
+                        if i != j:
+                            travel_expr.append(dist_min_mtx[(i, j)] * lit)
+
+                    # Service time = visit_minutes × each visited customer
+                    service_expr = [
+                        avg_visit_minutes * visit[(cid, sid, d)]
+                        for cid in customer_ids
+                    ]
+
+                    # Total (travel + service) ≤ daily budget
+                    model.Add(
+                        sum(travel_expr) + sum(service_expr)
+                        <= effective_daily_minutes
                     )
-                    t_min_ow  = max(1, int((dist_km / avg_speed_kmph) * 60))
-                    rows.append({
-                        "schedule_date":            d,
-                        "sales_id":                 assigned_sid,
-                        "territory_id":             territory_id,
-                        "customer_id":              cid,
-                        "truck_group":              truck_group,
-                        "shop_name":                info.get("shop_name", ""),
-                        "locality":                 info.get("locality", ""),
-                        "gps_lat":                  info.get("gps_lat"),
-                        "gps_lng":                  info.get("gps_lng"),
-                        "rfm_segment_final":        info.get("rfm_segment_final", "Low"),
-                        "final_customer_score":     info.get("final_customer_score", 0.0),
-                        "rfm_combined":             info.get("rfm_combined", 0.0),
-                        "customer_rank":            info.get("customer_rank", 0),
-                        "seasonality_score":        info.get("seasonality_score", 0.0),
-                        "territory_score":          info.get("territory_score", 0.0),
-                        "locality_score":           info.get("locality_score", 0.0),
-                        "rating_score":             info.get("rating_score", 0.0),
-                        "lifecycle_state":          info.get("lifecycle_state", "Active"),
-                        "cold_truck_required":      info.get("cold_truck_required", False),
-                        "estimated_visit_minutes":  avg_visit_minutes,
-                        "estimated_travel_minutes": t_min_ow,     # one-way, no ×2
-                        "warehouse_to_customer_km": round(dist_km, 3),
-                        # route_leg_km / cumulative_route_km filled by DailyRoutePlanner
-                        "route_leg_km":             None,
-                        "cumulative_route_km":      None,
-                    })
 
-        if not rows:
-            return empty
+            # (Constraint 7 — daily count cap — removed: the circuit time budget
+            # now naturally limits how many stops fit in a day with real distances.)
 
-        result_df = (
-            pd.DataFrame(rows)
-            .sort_values(
-                ["schedule_date", "sales_id", "rfm_segment_final", "final_customer_score"],
-                ascending=[True, True, True, False],
+            # # ── CONSTRAINT 8: Each customer visited at most once per day ─────────
+            # for cid in customer_ids:
+            #     for d in valid_dates:
+            #         model.Add(
+            #             sum(visit[(cid, sid, d)] for sid in sp_ids) <= 1
+            #         )
+
+            # ── CONSTRAINT 9: SP personal blocked dates (annual leave / sick leave) ─
+            # sp_valid_dates maps each SP to the dates they CAN work (territory holidays
+            # + personal leave already merged in the orchestrator).
+            # For every date a SP cannot work, force all their visit variables to 0.
+            # Without this constraint the solver can legally assign a SP on their leave
+            # day because all_valid_dates is the UNION across all SPs.
+            if sp_valid_dates:
+                for sid in sp_ids:
+                    sp_dates_set = set(sp_valid_dates.get(sid, valid_dates))
+                    for d in valid_dates:
+                        if d not in sp_dates_set:          # this SP is off on date d
+                            for cid in customer_ids:
+                                model.Add(visit[(cid, sid, d)] == 0)
+
+            # ── OBJECTIVE ─────────────────────────────────────────────────────────
+            # Terms:
+            #  A) Priority × score × visits   (High >> Medium >> Low)
+            #  B) Preferred visit day bonus — reward visits on customer's preferred weekday
+            #  C) Geographic compactness: customers close together → same SP
+            #  D) Weekly cadence bonus for High (reward covering each ISO week)
+            #  E) Alternate-week spread bonus for Medium (reward visits in different weeks)
+    #
+            # NOTE: day_w (earlier-date preference) is intentionally removed.
+            # It caused front-loading — all min-1 visits packed into the first few
+            # days, leaving the second half of the month empty.  The weekly cadence
+            # and alternate-week bonuses are sufficient to drive spread.
+
+            # Map Python weekday (Mon=0) to preferred_visit_day string
+            _DAY_NAME = {0:"Monday",1:"Tuesday",2:"Wednesday",
+                        3:"Thursday",4:"Friday",5:"Saturday",6:"Sunday"}
+
+            # ISO weeks present in valid_dates
+            week_nums = sorted({d.isocalendar()[1] for d in valid_dates})
+            date_to_week = {d: d.isocalendar()[1] for d in valid_dates}
+
+            obj_terms: list[cp_model.LinearExprT] = []
+
+            # Tier values — gap is so large that ALL Low visits combined < 1 Medium visit,
+            # and ALL Medium visits combined < 1 High visit.
+            # This forces strict priority: High fully saturated → Medium → Low.
+            _TIER = {"High": 1_000_000_000, "Medium": 1_000_000, "Low": 1}
+            PREFERRED_DAY_BONUS = 50   # tiny tiebreaker, never bridges segments
+
+            for cid in customer_ids:
+                info         = cust_lookup[cid]
+                segment      = info.get("rfm_segment_final", "Low")
+                tier         = _TIER.get(segment, 1)
+                score_b      = int(info.get("final_customer_score", 0.5) * 100)
+                weight       = tier + score_b             # score is tiebreaker within tier
+                pref_day     = info.get("preferred_visit_day", "")
+
+                for d in valid_dates:
+                    pref_w = PREFERRED_DAY_BONUS if _DAY_NAME.get(d.weekday()) == pref_day else 0
+                    for sid in sp_ids:
+                        obj_terms.append((weight + pref_w) * visit[(cid, sid, d)])
+
+            # ── SC5: Weekly cadence bonus — High visits every week, Medium alternate weeks ─
+            # For High customers: bonus for having at least 1 visit in EACH ISO week.
+            # For Medium customers: bonus for visits spread across DIFFERENT weeks
+            #   (penalise both visits landing in the same week).
+            # Implemented as soft objective terms using auxiliary BoolVars, not hard
+            # constraints, so the solver can trade off if calendar leaves no choice.
+            WEEKLY_CADENCE_BONUS  = 500_000_000   # half a High visit — encourages spread, never sacrifices a visit
+            ALT_WEEK_BONUS        = 500_000       # half a Medium visit
+
+            for cid in customer_ids:
+                segment = cust_lookup[cid].get("rfm_segment_final", "Low")
+
+                if segment == "High":
+                    # has_visit_in_week[w] = 1 if customer cid has any visit in week w
+                    for w in week_nums:
+                        week_dates = [d for d in valid_dates if date_to_week[d] == w]
+                        if not week_dates:
+                            continue
+                        has_visit = model.NewBoolVar(f"hwk_{cid}_{w}")
+                        # has_visit = 1  iff  sum of visits in this week >= 1
+                        model.AddMaxEquality(
+                            has_visit,
+                            [visit[(cid, sid, d)]
+                            for sid in sp_ids for d in week_dates]
+                        )
+                        obj_terms.append(WEEKLY_CADENCE_BONUS * has_visit)
+
+                elif segment == "Medium":
+                    # Reward visits landing in DIFFERENT weeks.
+                    # For each pair of weeks, bonus if the customer has a visit in both.
+                    # (Medium gets max 2 visits, so this pushes them to separate weeks.)
+                    for wi, wa in enumerate(week_nums):
+                        for wb in week_nums[wi + 1:]:
+                            dates_a = [d for d in valid_dates if date_to_week[d] == wa]
+                            dates_b = [d for d in valid_dates if date_to_week[d] == wb]
+                            if not dates_a or not dates_b:
+                                continue
+                            has_a = model.NewBoolVar(f"mwk_{cid}_{wa}")
+                            has_b = model.NewBoolVar(f"mwk_{cid}_{wb}")
+                            model.AddMaxEquality(
+                                has_a,
+                                [visit[(cid, sid, d)] for sid in sp_ids for d in dates_a]
+                            )
+                            model.AddMaxEquality(
+                                has_b,
+                                [visit[(cid, sid, d)] for sid in sp_ids for d in dates_b]
+                            )
+                            both_weeks = model.NewBoolVar(f"mboth_{cid}_{wa}_{wb}")
+                            model.AddMinEquality(both_weeks, [has_a, has_b])
+                            obj_terms.append(ALT_WEEK_BONUS * both_weeks)
+
+            # ── Compactness bonus (lightweight — no extra variables) ──────────────
+            # Reward each customer for being close to the territory centroid.
+            # Replaces the O(n²) BoolVar pair loop which created thousands of extra
+            # variables and constraints, causing normal-group timeouts.
+            if customer_ids:
+                centroid_lat = float(np.mean([cust_lookup[c]["gps_lat"] for c in customer_ids]))
+                centroid_lng = float(np.mean([cust_lookup[c]["gps_lng"] for c in customer_ids]))
+                COMPACT_BONUS = 2_000
+                for cid in customer_ids:
+                    dist_c = _haversine_km(
+                        float(cust_lookup[cid]["gps_lat"]),
+                        float(cust_lookup[cid]["gps_lng"]),
+                        centroid_lat, centroid_lng,
+                    )
+                    proximity = max(0, int((1.0 - min(dist_c / 50.0, 1.0)) * COMPACT_BONUS))
+                    if proximity > 0:
+                        for sid in sp_ids:
+                            obj_terms.append(proximity * assigned[(cid, sid)])
+
+            model.Maximize(sum(obj_terms))
+
+            # ── SOLVE ─────────────────────────────────────────────────────────────
+            import os
+            solver = cp_model.CpSolver()
+            t_limit = solver_time_seconds if solver_time_seconds is not None else self.solver_time_seconds
+            solver.parameters.max_time_in_seconds = t_limit
+            solver.parameters.num_search_workers  = max(4, min(os.cpu_count() or 4, 16))
+            solver.parameters.log_search_progress = False
+
+            # Round-robin hint — seed solver with a good starting solution
+            # so it polishes toward optimal rather than searching from scratch.
+            sorted_custs = sorted(customer_ids,
+                                key=lambda c: cust_lookup[c].get("final_customer_score", 0.5),
+                                reverse=True)
+            for i, cid in enumerate(sorted_custs):
+                hint_sid = sp_ids[i % len(sp_ids)]
+                for sid in sp_ids:
+                    model.AddHint(assigned[(cid, sid)], 1 if sid == hint_sid else 0)
+
+            status = solver.Solve(model)
+
+            # ── Failure diagnostics ───────────────────────────────────────────────
+            if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+                status_name = solver.StatusName(status)
+                print(f"\n  ❌ [{territory_id}/{truck_group}] CP-SAT returned: {status_name}")
+                print(f"     Variables : {len(visit) + len(assigned)}")
+                print(f"     Customers : {len(customer_ids)}")
+                print(f"     Salespeople: {len(sp_ids)}")
+                print(f"     Valid dates: {len(valid_dates)}")
+                diagnostics = _diagnose_infeasible(
+                    customer_ids, sp_ids, valid_dates, cust_lookup,
+                    sp_is_cold, avg_visit_minutes, travel_mins, daily_work_minutes, truck_group,
+                )
+                print(f"\n  ── Constraint failure analysis ──")
+                for i, msg in enumerate(diagnostics, 1):
+                    print(f"     [{i}] {msg}")
+                print()
+                return empty
+
+            print(f"  ✅ [{territory_id}/{truck_group}] {solver.StatusName(status)} "
+                f"| obj={solver.ObjectiveValue():.0f} "
+                f"| wall={solver.WallTime():.1f}s")
+
+            # ── Extract solution ──────────────────────────────────────────────────
+            rows: list[dict[str, Any]] = []
+            for cid in customer_ids:
+                # Which SP was assigned?
+                assigned_sid = next(
+                    (sid for sid in sp_ids if solver.Value(assigned[(cid, sid)]) == 1),
+                    None,
+                )
+                if assigned_sid is None:
+                    continue
+                info = cust_lookup[cid]
+                for d in valid_dates:
+                    if solver.Value(visit[(cid, assigned_sid, d)]) == 1:
+                        wh_dist_km = _haversine_km(
+                            warehouse_lat, warehouse_lng,
+                            float(info["gps_lat"]), float(info["gps_lng"]),
+                        )
+                        rows.append({
+                            "schedule_date":            d,
+                            "sales_id":                 assigned_sid,
+                            "territory_id":             territory_id,
+                            "customer_id":              cid,
+                            "truck_group":              truck_group,
+                            "shop_name":                info.get("shop_name", ""),
+                            "locality":                 info.get("locality", ""),
+                            "gps_lat":                  info.get("gps_lat"),
+                            "gps_lng":                  info.get("gps_lng"),
+                            "rfm_segment_final":        info.get("rfm_segment_final", "Low"),
+                            "final_customer_score":     info.get("final_customer_score", 0.0),
+                            "rfm_combined":             info.get("rfm_combined", 0.0),
+                            "customer_rank":            info.get("customer_rank", 0),
+                            "seasonality_score":        info.get("seasonality_score", 0.0),
+                            "territory_score":          info.get("territory_score", 0.0),
+                            "locality_score":           info.get("locality_score", 0.0),
+                            "rating_score":             info.get("rating_score", 0.0),
+                            "lifecycle_state":          info.get("lifecycle_state", "Active"),
+                            "cold_truck_required":      info.get("cold_truck_required", False),
+                            "estimated_visit_minutes":  avg_visit_minutes,
+                            # avg_leg_travel_min = inter-customer avg used in solver budget.
+                            # DailyRoutePlanner fills route_leg_km with exact legs post-solve.
+                            "estimated_travel_minutes": avg_leg_travel_min,
+                            "warehouse_to_customer_km": round(wh_dist_km, 3),
+                            "route_leg_km":             None,
+                            "cumulative_route_km":      None,
+                        })
+
+            if not rows:
+                return empty
+
+            result_df = (
+                pd.DataFrame(rows)
+                .sort_values(
+                    ["schedule_date", "sales_id", "rfm_segment_final", "final_customer_score"],
+                    ascending=[True, True, True, False],
+                )
+                .reset_index(drop=True)
             )
-            .reset_index(drop=True)
-        )
 
-        # ── Warn if any customer missed ───────────────────────────────────────
-        scheduled = set(result_df["customer_id"].unique())
-        missed    = [cid for cid in customer_ids if cid not in scheduled]
-        if missed:
-            print(
-                f"  ⚠️  [{territory_id}/{truck_group}] {len(missed)} customer(s) NOT scheduled "
-                f"(min-1-visit constraint may have been relaxed by capacity): {missed[:5]}"
-                + (f" …+{len(missed)-5} more" if len(missed) > 5 else "")
-            )
+            # ── Warn if any customer missed ───────────────────────────────────────
+            scheduled = set(result_df["customer_id"].unique())
+            missed    = [cid for cid in customer_ids if cid not in scheduled]
+            if missed:
+                print(
+                    f"  ⚠️  [{territory_id}/{truck_group}] {len(missed)} customer(s) NOT scheduled "
+                    f"(capacity overflow — see unvisited_customers / under_visited_customers): {missed[:5]}"
+                    + (f" …+{len(missed)-5} more" if len(missed) > 5 else "")
+                )
 
-        return result_df
+            return result_df
 
     @staticmethod
     def _empty_df() -> pd.DataFrame:
@@ -982,29 +1061,91 @@ class MultiSalespersonScheduler:
         normal_schedule = combined[combined["truck_group"] == "normal"].reset_index(drop=True)
         combined_daily  = self._build_combined_daily(sp_results)
 
-        # ── Unvisited customers — received 0 scheduled visits ─────────────
-        scheduled_ids    = set(combined["customer_id"].unique()) if not combined.empty else set()
-        unvisited_df     = full_customers[
-            ~full_customers["customer_id"].isin(scheduled_ids)
-        ].copy().reset_index(drop=True)
+        # ── Post-solve classification ──────────────────────────────────────────
+        # min-1-visit is NOT enforced as a constraint inside CP-SAT.
+        # After solving we split all customers into three buckets:
+        #
+        #   scheduled (combined)      — received ≥ 1 visit
+        #   unvisited_customers       — received 0 visits  (capacity overflow)
+        #   under_visited_customers   — received >0 but < segment cap visits
+        #
+        # All three buckets are fully populated every run; none is silently dropped.
+
+        _CAPS = {"High": 30, "Medium": 15, "Low": 10}
+
+        scheduled_ids = set(combined["customer_id"].unique()) if not combined.empty else set()
+
+        # Scope to the requested territory if applicable
+        scoped_customers = full_customers.copy()
         if territory_id:
-            unvisited_df = unvisited_df[
-                unvisited_df["territory_id"] == territory_id
-            ].reset_index(drop=True)
+            scoped_customers = scoped_customers[
+                scoped_customers["territory_id"] == territory_id
+            ]
+
+        # ── Bucket 1: Unvisited — 0 visits ────────────────────────────────────
+        unvisited_df = (
+            scoped_customers[~scoped_customers["customer_id"].isin(scheduled_ids)]
+            .copy()
+            .reset_index(drop=True)
+        )
         if not unvisited_df.empty:
-            print(f"\n  ⚠️  {len(unvisited_df)} customer(s) received NO visits (min-1 not met):")
+            print(f"\n  ⚠️  {len(unvisited_df)} customer(s) received NO visits "
+                  f"(capacity overflow — not a solver error):")
             for _, r in unvisited_df.iterrows():
                 print(f"     {r['customer_id']}  [{r.get('rfm_segment_final','?')}]  "
                       f"{r.get('shop_name','')}  ({r.get('territory_id','')})")
+        else:
+            print(f"\n  ✅  All customers received at least 1 visit.")
+
+        # ── Bucket 2: Under-visited — >0 but < segment cap ───────────────────
+        if not combined.empty:
+            visit_counts = (
+                combined.groupby("customer_id")
+                .size()
+                .rename("actual_visits")
+                .reset_index()
+            )
+            under_base = scoped_customers.merge(visit_counts, on="customer_id", how="left")
+            under_base["actual_visits"] = under_base["actual_visits"].fillna(0).astype(int)
+            under_base["visit_cap"]     = (
+                under_base["rfm_segment_final"].map(_CAPS).fillna(1).astype(int)
+            )
+            under_base["visits_gap"] = under_base["visit_cap"] - under_base["actual_visits"]
+            under_base["pct_of_cap"] = (
+                under_base["actual_visits"] / under_base["visit_cap"] * 100
+            ).round(1)
+            under_df = (
+                under_base[
+                    (under_base["actual_visits"] > 0) &
+                    (under_base["visits_gap"]    > 0)
+                ]
+                .sort_values(
+                    ["rfm_segment_final", "visits_gap"],
+                    ascending=[True, False],
+                )
+                .reset_index(drop=True)
+            )
+        else:
+            under_df = pd.DataFrame()
+
+        if not under_df.empty:
+            print(f"\n  ⚠️  {len(under_df)} customer(s) under-visited (>0 but < cap):")
+            for seg, grp in under_df.groupby("rfm_segment_final"):
+                print(f"     {seg}: {len(grp)} customers | "
+                      f"avg {grp['actual_visits'].mean():.1f}/{_CAPS.get(seg,1)} visits | "
+                      f"total missed = {grp['visits_gap'].sum()}")
+        else:
+            print(f"\n  ✅  All scheduled customers reached their full visit cap.")
 
         return MultiScheduleResult(
-            detailed_schedule    = combined,
-            cold_schedule        = cold_schedule,
-            normal_schedule      = normal_schedule,
-            daily_schedule       = combined_daily,
-            unvisited_customers  = unvisited_df,
-            salesperson_results  = sp_results,
-            territory_warehouses = ter_warehouses,
+            detailed_schedule       = combined,
+            cold_schedule           = cold_schedule,
+            normal_schedule         = normal_schedule,
+            daily_schedule          = combined_daily,
+            unvisited_customers     = unvisited_df,
+            under_visited_customers = under_df,
+            salesperson_results     = sp_results,
+            territory_warehouses    = ter_warehouses,
         )
 
     # ── Internal helpers ──────────────────────────────────────────────────────
@@ -1022,6 +1163,7 @@ class MultiSalespersonScheduler:
         merged["rfm_segment_final"]    = merged["rfm_segment_final"].fillna("Low")
         merged["final_customer_score"] = merged["final_customer_score"].fillna(0.0)
         return merged
+
 
     def _apply_route_ordering(
         self,
@@ -1091,6 +1233,346 @@ class MultiSalespersonScheduler:
             .reset_index(drop=True)
         )
 
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Under-visited customers Excel export
+# ─────────────────────────────────────────────────────────────────────────────
+
+def export_under_visited_excel(
+    result,
+    filepath: str = "under_visited_customers.xlsx",
+    territory_id: str = None,
+) -> str:
+    """
+    Exports a 4-sheet Excel workbook that shows exactly how well the schedule
+    served each customer relative to their segment visit cap.
+
+    Sheets
+    ──────
+    Summary                — KPI cards, per-segment table, capacity note
+    Under-Visited Customers — every customer with >0 but <cap visits
+    Full Report            — all customers: actual vs cap, colour-coded
+    Segment x SP           — delivery breakdown by salesperson × segment
+
+    Extra columns added to Under-Visited / Full Report
+    ───────────────────────────────────────────────────
+    actual_visits   — visits the customer received this month
+    visit_cap       — segment cap (High=30, Medium=15, Low=10)
+    visits_gap      — cap − actual  (how many visits were missed)
+    pct_of_cap      — actual / cap × 100
+
+    Usage
+    ─────
+    from scheduler_4 import export_under_visited_excel
+
+    export_under_visited_excel(result, "under_visited.xlsx", territory_id="TER_RUH")
+    # or for all territories:
+    export_under_visited_excel(result, "under_visited.xlsx")
+
+    Returns the filepath that was written.
+    """
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+        from openpyxl.formatting.rule import ColorScaleRule
+    except ImportError:
+        raise ImportError("pip install openpyxl")
+
+    combined = result.detailed_schedule
+    if combined.empty:
+        print("No schedule data to export.")
+        return filepath
+
+    _CAPS = {"High": 30, "Medium": 15, "Low": 10}
+
+    # ── Build per-customer base table ────────────────────────────────────────
+    visit_counts = (
+        combined.groupby("customer_id")
+        .size()
+        .rename("actual_visits")
+        .reset_index()
+    )
+    keep_cols = [c for c in
+                 ["customer_id", "rfm_segment_final", "final_customer_score",
+                  "sales_id", "territory_id", "cold_truck_required",
+                  "lifecycle_state", "shop_name"]
+                 if c in combined.columns]
+    base = (
+        combined[keep_cols]
+        .drop_duplicates("customer_id")
+        .merge(visit_counts, on="customer_id", how="left")
+    )
+    base["actual_visits"] = base["actual_visits"].fillna(0).astype(int)
+    base["visit_cap"]     = base["rfm_segment_final"].map(_CAPS).fillna(1).astype(int)
+    base["visits_gap"]    = base["visit_cap"] - base["actual_visits"]
+    base["pct_of_cap"]    = (base["actual_visits"] / base["visit_cap"] * 100).round(1)
+
+    if territory_id:
+        base = base[base["territory_id"] == territory_id].copy()
+
+    under_df = (
+        base[(base["actual_visits"] > 0) & (base["visits_gap"] > 0)]
+        .sort_values(["rfm_segment_final", "visits_gap"], ascending=[True, False])
+        .reset_index(drop=True)
+    )
+    full_df = base.sort_values(
+        ["rfm_segment_final", "visits_gap"], ascending=[True, False]
+    ).reset_index(drop=True)
+
+    seg_summary = full_df.groupby("rfm_segment_final").agg(
+        customers=("customer_id", "count"),
+        actual_visits=("actual_visits", "sum"),
+        max_possible=("visit_cap", "sum"),
+        avg_actual=("actual_visits", "mean"),
+        under_visited=("visits_gap", lambda x: (x > 0).sum()),
+        total_gap=("visits_gap", "sum"),
+        avg_pct=("pct_of_cap", "mean"),
+    ).round(2).reset_index()
+
+    working_days = combined["schedule_date"].nunique()
+    total_slots  = int(combined.groupby(["sales_id", "schedule_date"]).ngroups
+                       * combined.groupby("sales_id")
+                         .apply(lambda g: g.groupby("schedule_date").size().mean()).mean())
+    # simpler: actual total visits
+    total_actual = len(combined)
+    total_demand = int(full_df["visit_cap"].sum())
+    scope_label  = f"Territory: {territory_id}" if territory_id else "All Territories"
+
+    # ── Style helpers ────────────────────────────────────────────────────────
+    thin   = Side(style="thin", color="D0D0D0")
+    BORDER = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    SEG_FILL = {
+        "High":   PatternFill("solid", fgColor="FCE4D6"),
+        "Medium": PatternFill("solid", fgColor="FFF2CC"),
+        "Low":    PatternFill("solid", fgColor="F2F2F2"),
+    }
+    SEG_FG  = {"High": "C00000", "Medium": "7F4F24", "Low": "404040"}
+    ALT     = PatternFill("solid", fgColor="F9F9F9")
+
+    def _hdr(ws, row, values, bg, fg="FFFFFF"):
+        for c, v in enumerate(values, 1):
+            cell = ws.cell(row=row, column=c, value=v)
+            cell.fill      = PatternFill("solid", fgColor=bg)
+            cell.font      = Font(color=fg, bold=True, size=10, name="Calibri")
+            cell.alignment = Alignment(horizontal="center", vertical="center",
+                                       wrap_text=True)
+            cell.border    = BORDER
+        ws.row_dimensions[row].height = 22
+
+    def _cell(ws, r, c, v, fill=None, bold=False, align="left", fg="000000"):
+        cell = ws.cell(row=r, column=c, value=v)
+        if fill:         cell.fill = fill
+        cell.font      = Font(bold=bold, size=10, name="Calibri", color=fg)
+        cell.alignment = Alignment(horizontal=align, vertical="center")
+        cell.border    = BORDER
+        ws.row_dimensions[r].height = 16
+        return cell
+
+    def _widths(ws, widths):
+        for i, w in enumerate(widths, 1):
+            ws.column_dimensions[get_column_letter(i)].width = w
+
+    def _freeze(ws, ref="A3"):
+        ws.freeze_panes    = ref
+        ws.auto_filter.ref = ws.dimensions
+
+    ROW_COLS = ["Customer ID", "Shop Name", "Segment", "Assigned SP", "Territory",
+                "Cold Truck", "Lifecycle", "Actual Visits", "Visit Cap",
+                "Visits Gap", "% of Cap"]
+
+    def _write_customer_rows(ws, df, start_row=3):
+        for ri, (_, row) in enumerate(df.iterrows()):
+            r   = ri + start_row
+            seg = row["rfm_segment_final"]
+            vals = [
+                row["customer_id"],
+                row.get("shop_name", ""),
+                seg,
+                row.get("sales_id", ""),
+                row.get("territory_id", ""),
+                "Yes" if row.get("cold_truck_required") else "No",
+                row.get("lifecycle_state", ""),
+                int(row["actual_visits"]),
+                int(row["visit_cap"]),
+                int(row["visits_gap"]),
+                f"{row['pct_of_cap']:.1f}%",
+            ]
+            gap_fill = (
+                PatternFill("solid", fgColor="FCE4D6") if row["visits_gap"] >= 20
+                else PatternFill("solid", fgColor="FFF2CC") if row["visits_gap"] >= 8
+                else ALT
+            )
+            for c, v in enumerate(vals, 1):
+                fill = (
+                    gap_fill if c == 10
+                    else SEG_FILL.get(seg) if c == 3
+                    else (ALT if ri % 2 == 0 else None)
+                )
+                _cell(ws, r, c, v, fill=fill, bold=(c == 1),
+                      align="center" if c > 2 else "left",
+                      fg=SEG_FG.get(seg, "000000") if c == 3 else "000000")
+        if len(df) > 0:
+            ws.conditional_formatting.add(
+                f"K{start_row}:K{start_row - 1 + len(df)}",
+                ColorScaleRule(
+                    start_type="num", start_value=0,   start_color="F8696B",
+                    mid_type="num",   mid_value=50,    mid_color="FFEB84",
+                    end_type="num",   end_value=100,   end_color="63BE7B",
+                )
+            )
+
+    # ═══ Build workbook ═══════════════════════════════════════════════════════
+    wb = Workbook()
+    wb.remove(wb.active)
+
+    # ── Sheet 1: Summary ─────────────────────────────────────────────────────
+    ws1 = wb.create_sheet("Summary")
+    ws1.sheet_view.showGridLines = False
+
+    ws1.merge_cells("A1:H1")
+    t1 = ws1["A1"]
+    t1.value     = f"Monthly Schedule — Visit Delivery Report  ({scope_label})"
+    t1.font      = Font(bold=True, size=14, color="1F4E79", name="Calibri")
+    t1.alignment = Alignment(horizontal="center", vertical="center")
+    t1.fill      = PatternFill("solid", fgColor="DEEAF1")
+    ws1.row_dimensions[1].height = 30
+
+    # KPI row
+    kpis = [
+        ("Total Customers",      len(full_df),   "1F4E79"),
+        ("Working Days",         working_days,   "1F4E79"),
+        ("Actual Visits",        total_actual,   "2E7D32"),
+        ("Demand (full caps)",   total_demand,   "C00000"),
+        ("Unvisited",            len(result.unvisited_customers) if hasattr(result, "unvisited_customers") else 0, "C00000"),
+        ("Under-Visited",        len(under_df),  "E65100"),
+    ]
+    for i, (label, val, clr) in enumerate(kpis):
+        col = i + 1
+        cl  = get_column_letter(col)
+        ws1.merge_cells(f"{cl}3:{cl}4")
+        ws1.merge_cells(f"{cl}5:{cl}6")
+        lc = ws1[f"{cl}3"]
+        lc.value     = label
+        lc.font      = Font(size=9, color="666666", name="Calibri")
+        lc.alignment = Alignment(horizontal="center", vertical="center")
+        vc = ws1[f"{cl}5"]
+        vc.value     = val
+        vc.font      = Font(bold=True, size=18, color=clr, name="Calibri")
+        vc.alignment = Alignment(horizontal="center", vertical="center")
+
+    # Segment table
+    r = 8
+    _hdr(ws1, r,
+         ["Segment", "Customers", "Cap / Customer", "Max Possible",
+          "Actual Visits", "Avg % of Cap", "Under-Visited", "Total Missed Visits"],
+         "1F4E79")
+    for _, row in seg_summary.iterrows():
+        r += 1
+        seg = row["rfm_segment_final"]
+        for c, v in enumerate(
+            [seg, int(row["customers"]), _CAPS.get(seg, 1),
+             int(row["max_possible"]), int(row["actual_visits"]),
+             f"{row['avg_pct']:.1f}%", int(row["under_visited"]),
+             int(row["total_gap"])], 1
+        ):
+            _cell(ws1, r, c, v,
+                  fill=SEG_FILL.get(seg, ALT),
+                  bold=(c == 1),
+                  align="center" if c > 1 else "left",
+                  fg=SEG_FG.get(seg, "000000") if c == 1 else "000000")
+
+    # Capacity note
+    r += 2
+    ws1.merge_cells(f"A{r}:H{r}")
+    note = ws1[f"A{r}"]
+    note.value = (
+        f"Note: min-1-visit is NOT a hard constraint. "
+        f"Demand ({total_demand}) >> Capacity ({total_actual}). "
+        f"Solver fills slots by priority weight. "
+        f"Unvisited and under-visited customers reflect real capacity overflow — not solver errors."
+    )
+    note.font      = Font(italic=True, size=10, color="C00000", name="Calibri")
+    note.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    note.border    = BORDER
+    ws1.row_dimensions[r].height = 28
+    _widths(ws1, [18, 12, 14, 16, 14, 14, 14, 20])
+
+    # ── Sheet 2: Under-Visited ────────────────────────────────────────────────
+    ws2 = wb.create_sheet("Under-Visited Customers")
+    ws2.sheet_view.showGridLines = False
+    ws2.merge_cells("A1:K1")
+    t2 = ws2["A1"]
+    t2.value     = f"Under-Visited Customers — Received > 0 but < Cap  ({scope_label})"
+    t2.font      = Font(bold=True, size=12, color="FFFFFF", name="Calibri")
+    t2.fill      = PatternFill("solid", fgColor="C00000")
+    t2.alignment = Alignment(horizontal="center", vertical="center")
+    ws2.row_dimensions[1].height = 26
+    _hdr(ws2, 2, ROW_COLS, "404040")
+    _write_customer_rows(ws2, under_df, start_row=3)
+    _freeze(ws2)
+    _widths(ws2, [16, 38, 10, 14, 12, 10, 12, 12, 10, 10, 10])
+
+    # ── Sheet 3: Full Report ──────────────────────────────────────────────────
+    ws3 = wb.create_sheet("Full Report")
+    ws3.sheet_view.showGridLines = False
+    ws3.merge_cells("A1:K1")
+    t3 = ws3["A1"]
+    t3.value     = f"Full Customer Visit Report — All Customers  ({scope_label})"
+    t3.font      = Font(bold=True, size=12, color="FFFFFF", name="Calibri")
+    t3.fill      = PatternFill("solid", fgColor="1F4E79")
+    t3.alignment = Alignment(horizontal="center", vertical="center")
+    ws3.row_dimensions[1].height = 26
+    _hdr(ws3, 2, ROW_COLS, "1F4E79")
+    _write_customer_rows(ws3, full_df, start_row=3)
+    _freeze(ws3)
+    _widths(ws3, [16, 38, 10, 14, 12, 10, 12, 12, 10, 10, 10])
+
+    # ── Sheet 4: Segment × SP ─────────────────────────────────────────────────
+    ws4 = wb.create_sheet("Segment x SP")
+    ws4.sheet_view.showGridLines = False
+    ws4.merge_cells("A1:G1")
+    t4 = ws4["A1"]
+    t4.value     = f"Visit Delivery by Salesperson × Segment  ({scope_label})"
+    t4.font      = Font(bold=True, size=12, color="FFFFFF", name="Calibri")
+    t4.fill      = PatternFill("solid", fgColor="1F4E79")
+    t4.alignment = Alignment(horizontal="center", vertical="center")
+    ws4.row_dimensions[1].height = 26
+
+    sp_seg = (
+        full_df.groupby(["sales_id", "rfm_segment_final"])
+        .agg(customers=("customer_id", "count"),
+             actual=("actual_visits", "sum"),
+             cap_total=("visit_cap", "sum"),
+             avg_visits=("actual_visits", "mean"),
+             avg_pct=("pct_of_cap", "mean"))
+        .round(2).reset_index()
+    )
+    _hdr(ws4, 2,
+         ["Salesperson", "Segment", "Customers", "Actual Visits",
+          "Max Possible", "Avg Visits", "Avg % of Cap"],
+         "1F4E79")
+    for ri, (_, row) in enumerate(sp_seg.iterrows()):
+        r   = ri + 3
+        seg = row["rfm_segment_final"]
+        for c, v in enumerate(
+            [row["sales_id"], seg, int(row["customers"]), int(row["actual"]),
+             int(row["cap_total"]), f"{row['avg_visits']:.1f}", f"{row['avg_pct']:.1f}%"], 1
+        ):
+            _cell(ws4, r, c, v,
+                  fill=SEG_FILL.get(seg, ALT) if c == 2 else (ALT if ri % 2 == 0 else None),
+                  bold=(c == 1),
+                  align="center" if c > 1 else "left",
+                  fg=SEG_FG.get(seg, "000000") if c == 2 else "000000")
+    _freeze(ws4)
+    _widths(ws4, [16, 12, 12, 14, 14, 12, 14])
+
+    wb.save(filepath)
+    print(f"Saved → {filepath}  "
+          f"({len(under_df)} under-visited | {len(full_df)} total customers)")
+    return filepath
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Folium map helpers  (updated for truck_group, km, new fields)

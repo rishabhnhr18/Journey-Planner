@@ -56,7 +56,7 @@ def validate_schedule(
     ──────
     1.  Cold-truck customers only assigned to cold-capable salespeople.
     2.  Every active (non-Churned, non-Dormant) customer has ≥ 1 visit.
-    3.  Max visits/month by RFM segment (High≤4, Medium≤2, Low≤1).
+    3.  Max visits/month by RFM segment (High≤30, Medium≤15, Low≤10).
     4.  Each customer is served by ONE salesperson for all their visits.
     5.  Daily customer count ≤ capacity (pure time arithmetic, no buffer).
     6.  Daily total time ≤ daily_work_minutes per salesperson (no buffer).
@@ -541,7 +541,7 @@ def validate_schedule(
 #             at least once in the schedule.
 #
 #  Check  3 — Max visits/month by RFM segment
-#             High ≤ 4 visits, Medium ≤ 2 visits, Low ≤ 1 visit.
+#             High ≤ 30 visits, Medium ≤ 15 visits, Low ≤ 10 visits.
 #
 #  Check  4 — Single salesperson per customer
 #             All visits for a given customer must be by the same salesperson.
@@ -582,8 +582,9 @@ def validate_schedule(
 #             normal_schedule.
 #
 #  Check 14 — Unvisited customers
-#             result.unvisited_customers must be empty. Any row here means an
-#             active customer received 0 visits — the min-1 hard constraint
-#             was not satisfied for that customer.
+#             result.unvisited_customers lists every active customer who
+#             received 0 visits because capacity could not accommodate them.
+#             These are explicitly tracked — NOT silently dropped.
+#             An empty unvisited_customers means all customers were scheduled.
 #
 # =============================================================================

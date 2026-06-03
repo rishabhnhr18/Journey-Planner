@@ -97,9 +97,10 @@ class MultiScheduleResult:
     cold_schedule:        pd.DataFrame   # cold-truck customers only
     normal_schedule:      pd.DataFrame   # normal-truck customers only
     daily_schedule:       pd.DataFrame
-    unvisited_customers:  pd.DataFrame   # customers who received 0 visits (min-1 not met)
-    salesperson_results:  dict[str, SalespersonScheduleResult] = field(default_factory=dict)
-    territory_warehouses: dict[str, tuple[float, float]]       = field(default_factory=dict)
+    unvisited_customers:     pd.DataFrame   # customers who received 0 visits (capacity overflow)
+    under_visited_customers: pd.DataFrame   # customers with >0 but < segment cap visits
+    salesperson_results:     dict[str, SalespersonScheduleResult] = field(default_factory=dict)
+    territory_warehouses:    dict[str, tuple[float, float]]       = field(default_factory=dict)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -309,10 +310,16 @@ class TerritoryScheduler:
     2.  Each customer is served by exactly ONE salesperson for ALL their visits
         (assignment consistency: if you visit customer X, you always visit X).
     3.  Cold-truck customers → only cold-capable salespeople.
-    4.  Min 1 visit / month for every active customer.
-    5.  Max visits / month by RFM segment (High=4, Medium=2, Low=1).
-    6.  Daily total time (visit + travel) ≤ daily_work_minutes per salesperson.
-    7.  Daily customer count ≤ capacity per salesperson.
+    4.  Max visits / month by RFM segment (High=30, Medium=15, Low=10).
+    5.  Daily total time (visit + travel) ≤ daily_work_minutes per salesperson.
+    6.  Daily customer count ≤ capacity per salesperson.
+
+    NOTE — min-1-visit is NOT a hard constraint.
+    It is used purely as a post-solve filter: customers who received 0 visits
+    land in unvisited_customers; customers below cap land in under_visited_customers.
+    The solver maximises total weighted visits within capacity — if it cannot
+    serve every customer, lower-priority customers are naturally skipped rather
+    than making the whole solve INFEASIBLE.
 
     Objective (maximise)
     ────────────────────
@@ -461,13 +468,16 @@ class TerritoryScheduler:
                 print(f"  [{territory_id}/cold] WARNING: No cold-capable SP found. "
                       "Allowing all SPs for cold customers as fallback.")
 
-        # ── CONSTRAINT 4: Min 1 visit per active customer ─────────────────────
-        for cid in customer_ids:
-            model.Add(
-                sum(visit[(cid, sid, d)] for sid in sp_ids for d in valid_dates) >= 1
-            )
+        # ── CONSTRAINT 4 (REMOVED) ───────────────────────────────────────────
+        # Min-1-visit was a hard constraint here.  It is now removed entirely.
+        # When capacity is insufficient to serve all customers the solver was
+        # returning INFEASIBLE (old behaviour) or silently over-promising.
+        # Instead the solver freely decides who to visit based purely on the
+        # objective (weighted visits).  Post-solve, customers with 0 visits go
+        # to unvisited_customers and customers below their cap go to
+        # under_visited_customers.  No silent drops, no false INFEASIBLE.
 
-        # ── CONSTRAINT 5: Max visits per month (by RFM segment) ──────────────
+        # ── CONSTRAINT 4: Max visits per month (by RFM segment) ──────────────
         for cid in customer_ids:
             max_v = effective_max[cid]
             model.Add(
@@ -982,29 +992,91 @@ class MultiSalespersonScheduler:
         normal_schedule = combined[combined["truck_group"] == "normal"].reset_index(drop=True)
         combined_daily  = self._build_combined_daily(sp_results)
 
-        # ── Unvisited customers — received 0 scheduled visits ─────────────
-        scheduled_ids    = set(combined["customer_id"].unique()) if not combined.empty else set()
-        unvisited_df     = full_customers[
-            ~full_customers["customer_id"].isin(scheduled_ids)
-        ].copy().reset_index(drop=True)
+        # ── Post-solve classification ──────────────────────────────────────────
+        # min-1-visit is NOT enforced as a constraint inside CP-SAT.
+        # After solving we split all customers into three buckets:
+        #
+        #   scheduled (combined)      — received ≥ 1 visit
+        #   unvisited_customers       — received 0 visits  (capacity overflow)
+        #   under_visited_customers   — received >0 but < segment cap visits
+        #
+        # All three buckets are fully populated every run; none is silently dropped.
+
+        _CAPS = {"High": 30, "Medium": 15, "Low": 10}
+
+        scheduled_ids = set(combined["customer_id"].unique()) if not combined.empty else set()
+
+        # Scope to the requested territory if applicable
+        scoped_customers = full_customers.copy()
         if territory_id:
-            unvisited_df = unvisited_df[
-                unvisited_df["territory_id"] == territory_id
-            ].reset_index(drop=True)
+            scoped_customers = scoped_customers[
+                scoped_customers["territory_id"] == territory_id
+            ]
+
+        # ── Bucket 1: Unvisited — 0 visits ────────────────────────────────────
+        unvisited_df = (
+            scoped_customers[~scoped_customers["customer_id"].isin(scheduled_ids)]
+            .copy()
+            .reset_index(drop=True)
+        )
         if not unvisited_df.empty:
-            print(f"\n  ⚠️  {len(unvisited_df)} customer(s) received NO visits (min-1 not met):")
+            print(f"\n  ⚠️  {len(unvisited_df)} customer(s) received NO visits "
+                  f"(capacity overflow — not a solver error):")
             for _, r in unvisited_df.iterrows():
                 print(f"     {r['customer_id']}  [{r.get('rfm_segment_final','?')}]  "
                       f"{r.get('shop_name','')}  ({r.get('territory_id','')})")
+        else:
+            print(f"\n  ✅  All customers received at least 1 visit.")
+
+        # ── Bucket 2: Under-visited — >0 but < segment cap ───────────────────
+        if not combined.empty:
+            visit_counts = (
+                combined.groupby("customer_id")
+                .size()
+                .rename("actual_visits")
+                .reset_index()
+            )
+            under_base = scoped_customers.merge(visit_counts, on="customer_id", how="left")
+            under_base["actual_visits"] = under_base["actual_visits"].fillna(0).astype(int)
+            under_base["visit_cap"]     = (
+                under_base["rfm_segment_final"].map(_CAPS).fillna(1).astype(int)
+            )
+            under_base["visits_gap"] = under_base["visit_cap"] - under_base["actual_visits"]
+            under_base["pct_of_cap"] = (
+                under_base["actual_visits"] / under_base["visit_cap"] * 100
+            ).round(1)
+            under_df = (
+                under_base[
+                    (under_base["actual_visits"] > 0) &
+                    (under_base["visits_gap"]    > 0)
+                ]
+                .sort_values(
+                    ["rfm_segment_final", "visits_gap"],
+                    ascending=[True, False],
+                )
+                .reset_index(drop=True)
+            )
+        else:
+            under_df = pd.DataFrame()
+
+        if not under_df.empty:
+            print(f"\n  ⚠️  {len(under_df)} customer(s) under-visited (>0 but < cap):")
+            for seg, grp in under_df.groupby("rfm_segment_final"):
+                print(f"     {seg}: {len(grp)} customers | "
+                      f"avg {grp['actual_visits'].mean():.1f}/{_CAPS.get(seg,1)} visits | "
+                      f"total missed = {grp['visits_gap'].sum()}")
+        else:
+            print(f"\n  ✅  All scheduled customers reached their full visit cap.")
 
         return MultiScheduleResult(
-            detailed_schedule    = combined,
-            cold_schedule        = cold_schedule,
-            normal_schedule      = normal_schedule,
-            daily_schedule       = combined_daily,
-            unvisited_customers  = unvisited_df,
-            salesperson_results  = sp_results,
-            territory_warehouses = ter_warehouses,
+            detailed_schedule       = combined,
+            cold_schedule           = cold_schedule,
+            normal_schedule         = normal_schedule,
+            daily_schedule          = combined_daily,
+            unvisited_customers     = unvisited_df,
+            under_visited_customers = under_df,
+            salesperson_results     = sp_results,
+            territory_warehouses    = ter_warehouses,
         )
 
     # ── Internal helpers ──────────────────────────────────────────────────────
@@ -1091,6 +1163,346 @@ class MultiSalespersonScheduler:
             .reset_index(drop=True)
         )
 
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Under-visited customers Excel export
+# ─────────────────────────────────────────────────────────────────────────────
+
+def export_under_visited_excel(
+    result,
+    filepath: str = "under_visited_customers.xlsx",
+    territory_id: str = None,
+) -> str:
+    """
+    Exports a 4-sheet Excel workbook that shows exactly how well the schedule
+    served each customer relative to their segment visit cap.
+
+    Sheets
+    ──────
+    Summary                — KPI cards, per-segment table, capacity note
+    Under-Visited Customers — every customer with >0 but <cap visits
+    Full Report            — all customers: actual vs cap, colour-coded
+    Segment x SP           — delivery breakdown by salesperson × segment
+
+    Extra columns added to Under-Visited / Full Report
+    ───────────────────────────────────────────────────
+    actual_visits   — visits the customer received this month
+    visit_cap       — segment cap (High=30, Medium=15, Low=10)
+    visits_gap      — cap − actual  (how many visits were missed)
+    pct_of_cap      — actual / cap × 100
+
+    Usage
+    ─────
+    from scheduler_4 import export_under_visited_excel
+
+    export_under_visited_excel(result, "under_visited.xlsx", territory_id="TER_RUH")
+    # or for all territories:
+    export_under_visited_excel(result, "under_visited.xlsx")
+
+    Returns the filepath that was written.
+    """
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+        from openpyxl.formatting.rule import ColorScaleRule
+    except ImportError:
+        raise ImportError("pip install openpyxl")
+
+    combined = result.detailed_schedule
+    if combined.empty:
+        print("No schedule data to export.")
+        return filepath
+
+    _CAPS = {"High": 30, "Medium": 15, "Low": 10}
+
+    # ── Build per-customer base table ────────────────────────────────────────
+    visit_counts = (
+        combined.groupby("customer_id")
+        .size()
+        .rename("actual_visits")
+        .reset_index()
+    )
+    keep_cols = [c for c in
+                 ["customer_id", "rfm_segment_final", "final_customer_score",
+                  "sales_id", "territory_id", "cold_truck_required",
+                  "lifecycle_state", "shop_name"]
+                 if c in combined.columns]
+    base = (
+        combined[keep_cols]
+        .drop_duplicates("customer_id")
+        .merge(visit_counts, on="customer_id", how="left")
+    )
+    base["actual_visits"] = base["actual_visits"].fillna(0).astype(int)
+    base["visit_cap"]     = base["rfm_segment_final"].map(_CAPS).fillna(1).astype(int)
+    base["visits_gap"]    = base["visit_cap"] - base["actual_visits"]
+    base["pct_of_cap"]    = (base["actual_visits"] / base["visit_cap"] * 100).round(1)
+
+    if territory_id:
+        base = base[base["territory_id"] == territory_id].copy()
+
+    under_df = (
+        base[(base["actual_visits"] > 0) & (base["visits_gap"] > 0)]
+        .sort_values(["rfm_segment_final", "visits_gap"], ascending=[True, False])
+        .reset_index(drop=True)
+    )
+    full_df = base.sort_values(
+        ["rfm_segment_final", "visits_gap"], ascending=[True, False]
+    ).reset_index(drop=True)
+
+    seg_summary = full_df.groupby("rfm_segment_final").agg(
+        customers=("customer_id", "count"),
+        actual_visits=("actual_visits", "sum"),
+        max_possible=("visit_cap", "sum"),
+        avg_actual=("actual_visits", "mean"),
+        under_visited=("visits_gap", lambda x: (x > 0).sum()),
+        total_gap=("visits_gap", "sum"),
+        avg_pct=("pct_of_cap", "mean"),
+    ).round(2).reset_index()
+
+    working_days = combined["schedule_date"].nunique()
+    total_slots  = int(combined.groupby(["sales_id", "schedule_date"]).ngroups
+                       * combined.groupby("sales_id")
+                         .apply(lambda g: g.groupby("schedule_date").size().mean()).mean())
+    # simpler: actual total visits
+    total_actual = len(combined)
+    total_demand = int(full_df["visit_cap"].sum())
+    scope_label  = f"Territory: {territory_id}" if territory_id else "All Territories"
+
+    # ── Style helpers ────────────────────────────────────────────────────────
+    thin   = Side(style="thin", color="D0D0D0")
+    BORDER = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    SEG_FILL = {
+        "High":   PatternFill("solid", fgColor="FCE4D6"),
+        "Medium": PatternFill("solid", fgColor="FFF2CC"),
+        "Low":    PatternFill("solid", fgColor="F2F2F2"),
+    }
+    SEG_FG  = {"High": "C00000", "Medium": "7F4F24", "Low": "404040"}
+    ALT     = PatternFill("solid", fgColor="F9F9F9")
+
+    def _hdr(ws, row, values, bg, fg="FFFFFF"):
+        for c, v in enumerate(values, 1):
+            cell = ws.cell(row=row, column=c, value=v)
+            cell.fill      = PatternFill("solid", fgColor=bg)
+            cell.font      = Font(color=fg, bold=True, size=10, name="Calibri")
+            cell.alignment = Alignment(horizontal="center", vertical="center",
+                                       wrap_text=True)
+            cell.border    = BORDER
+        ws.row_dimensions[row].height = 22
+
+    def _cell(ws, r, c, v, fill=None, bold=False, align="left", fg="000000"):
+        cell = ws.cell(row=r, column=c, value=v)
+        if fill:         cell.fill = fill
+        cell.font      = Font(bold=bold, size=10, name="Calibri", color=fg)
+        cell.alignment = Alignment(horizontal=align, vertical="center")
+        cell.border    = BORDER
+        ws.row_dimensions[r].height = 16
+        return cell
+
+    def _widths(ws, widths):
+        for i, w in enumerate(widths, 1):
+            ws.column_dimensions[get_column_letter(i)].width = w
+
+    def _freeze(ws, ref="A3"):
+        ws.freeze_panes    = ref
+        ws.auto_filter.ref = ws.dimensions
+
+    ROW_COLS = ["Customer ID", "Shop Name", "Segment", "Assigned SP", "Territory",
+                "Cold Truck", "Lifecycle", "Actual Visits", "Visit Cap",
+                "Visits Gap", "% of Cap"]
+
+    def _write_customer_rows(ws, df, start_row=3):
+        for ri, (_, row) in enumerate(df.iterrows()):
+            r   = ri + start_row
+            seg = row["rfm_segment_final"]
+            vals = [
+                row["customer_id"],
+                row.get("shop_name", ""),
+                seg,
+                row.get("sales_id", ""),
+                row.get("territory_id", ""),
+                "Yes" if row.get("cold_truck_required") else "No",
+                row.get("lifecycle_state", ""),
+                int(row["actual_visits"]),
+                int(row["visit_cap"]),
+                int(row["visits_gap"]),
+                f"{row['pct_of_cap']:.1f}%",
+            ]
+            gap_fill = (
+                PatternFill("solid", fgColor="FCE4D6") if row["visits_gap"] >= 20
+                else PatternFill("solid", fgColor="FFF2CC") if row["visits_gap"] >= 8
+                else ALT
+            )
+            for c, v in enumerate(vals, 1):
+                fill = (
+                    gap_fill if c == 10
+                    else SEG_FILL.get(seg) if c == 3
+                    else (ALT if ri % 2 == 0 else None)
+                )
+                _cell(ws, r, c, v, fill=fill, bold=(c == 1),
+                      align="center" if c > 2 else "left",
+                      fg=SEG_FG.get(seg, "000000") if c == 3 else "000000")
+        if len(df) > 0:
+            ws.conditional_formatting.add(
+                f"K{start_row}:K{start_row - 1 + len(df)}",
+                ColorScaleRule(
+                    start_type="num", start_value=0,   start_color="F8696B",
+                    mid_type="num",   mid_value=50,    mid_color="FFEB84",
+                    end_type="num",   end_value=100,   end_color="63BE7B",
+                )
+            )
+
+    # ═══ Build workbook ═══════════════════════════════════════════════════════
+    wb = Workbook()
+    wb.remove(wb.active)
+
+    # ── Sheet 1: Summary ─────────────────────────────────────────────────────
+    ws1 = wb.create_sheet("Summary")
+    ws1.sheet_view.showGridLines = False
+
+    ws1.merge_cells("A1:H1")
+    t1 = ws1["A1"]
+    t1.value     = f"Monthly Schedule — Visit Delivery Report  ({scope_label})"
+    t1.font      = Font(bold=True, size=14, color="1F4E79", name="Calibri")
+    t1.alignment = Alignment(horizontal="center", vertical="center")
+    t1.fill      = PatternFill("solid", fgColor="DEEAF1")
+    ws1.row_dimensions[1].height = 30
+
+    # KPI row
+    kpis = [
+        ("Total Customers",      len(full_df),   "1F4E79"),
+        ("Working Days",         working_days,   "1F4E79"),
+        ("Actual Visits",        total_actual,   "2E7D32"),
+        ("Demand (full caps)",   total_demand,   "C00000"),
+        ("Unvisited",            len(result.unvisited_customers) if hasattr(result, "unvisited_customers") else 0, "C00000"),
+        ("Under-Visited",        len(under_df),  "E65100"),
+    ]
+    for i, (label, val, clr) in enumerate(kpis):
+        col = i + 1
+        cl  = get_column_letter(col)
+        ws1.merge_cells(f"{cl}3:{cl}4")
+        ws1.merge_cells(f"{cl}5:{cl}6")
+        lc = ws1[f"{cl}3"]
+        lc.value     = label
+        lc.font      = Font(size=9, color="666666", name="Calibri")
+        lc.alignment = Alignment(horizontal="center", vertical="center")
+        vc = ws1[f"{cl}5"]
+        vc.value     = val
+        vc.font      = Font(bold=True, size=18, color=clr, name="Calibri")
+        vc.alignment = Alignment(horizontal="center", vertical="center")
+
+    # Segment table
+    r = 8
+    _hdr(ws1, r,
+         ["Segment", "Customers", "Cap / Customer", "Max Possible",
+          "Actual Visits", "Avg % of Cap", "Under-Visited", "Total Missed Visits"],
+         "1F4E79")
+    for _, row in seg_summary.iterrows():
+        r += 1
+        seg = row["rfm_segment_final"]
+        for c, v in enumerate(
+            [seg, int(row["customers"]), _CAPS.get(seg, 1),
+             int(row["max_possible"]), int(row["actual_visits"]),
+             f"{row['avg_pct']:.1f}%", int(row["under_visited"]),
+             int(row["total_gap"])], 1
+        ):
+            _cell(ws1, r, c, v,
+                  fill=SEG_FILL.get(seg, ALT),
+                  bold=(c == 1),
+                  align="center" if c > 1 else "left",
+                  fg=SEG_FG.get(seg, "000000") if c == 1 else "000000")
+
+    # Capacity note
+    r += 2
+    ws1.merge_cells(f"A{r}:H{r}")
+    note = ws1[f"A{r}"]
+    note.value = (
+        f"Note: min-1-visit is NOT a hard constraint. "
+        f"Demand ({total_demand}) >> Capacity ({total_actual}). "
+        f"Solver fills slots by priority weight. "
+        f"Unvisited and under-visited customers reflect real capacity overflow — not solver errors."
+    )
+    note.font      = Font(italic=True, size=10, color="C00000", name="Calibri")
+    note.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    note.border    = BORDER
+    ws1.row_dimensions[r].height = 28
+    _widths(ws1, [18, 12, 14, 16, 14, 14, 14, 20])
+
+    # ── Sheet 2: Under-Visited ────────────────────────────────────────────────
+    ws2 = wb.create_sheet("Under-Visited Customers")
+    ws2.sheet_view.showGridLines = False
+    ws2.merge_cells("A1:K1")
+    t2 = ws2["A1"]
+    t2.value     = f"Under-Visited Customers — Received > 0 but < Cap  ({scope_label})"
+    t2.font      = Font(bold=True, size=12, color="FFFFFF", name="Calibri")
+    t2.fill      = PatternFill("solid", fgColor="C00000")
+    t2.alignment = Alignment(horizontal="center", vertical="center")
+    ws2.row_dimensions[1].height = 26
+    _hdr(ws2, 2, ROW_COLS, "404040")
+    _write_customer_rows(ws2, under_df, start_row=3)
+    _freeze(ws2)
+    _widths(ws2, [16, 38, 10, 14, 12, 10, 12, 12, 10, 10, 10])
+
+    # ── Sheet 3: Full Report ──────────────────────────────────────────────────
+    ws3 = wb.create_sheet("Full Report")
+    ws3.sheet_view.showGridLines = False
+    ws3.merge_cells("A1:K1")
+    t3 = ws3["A1"]
+    t3.value     = f"Full Customer Visit Report — All Customers  ({scope_label})"
+    t3.font      = Font(bold=True, size=12, color="FFFFFF", name="Calibri")
+    t3.fill      = PatternFill("solid", fgColor="1F4E79")
+    t3.alignment = Alignment(horizontal="center", vertical="center")
+    ws3.row_dimensions[1].height = 26
+    _hdr(ws3, 2, ROW_COLS, "1F4E79")
+    _write_customer_rows(ws3, full_df, start_row=3)
+    _freeze(ws3)
+    _widths(ws3, [16, 38, 10, 14, 12, 10, 12, 12, 10, 10, 10])
+
+    # ── Sheet 4: Segment × SP ─────────────────────────────────────────────────
+    ws4 = wb.create_sheet("Segment x SP")
+    ws4.sheet_view.showGridLines = False
+    ws4.merge_cells("A1:G1")
+    t4 = ws4["A1"]
+    t4.value     = f"Visit Delivery by Salesperson × Segment  ({scope_label})"
+    t4.font      = Font(bold=True, size=12, color="FFFFFF", name="Calibri")
+    t4.fill      = PatternFill("solid", fgColor="1F4E79")
+    t4.alignment = Alignment(horizontal="center", vertical="center")
+    ws4.row_dimensions[1].height = 26
+
+    sp_seg = (
+        full_df.groupby(["sales_id", "rfm_segment_final"])
+        .agg(customers=("customer_id", "count"),
+             actual=("actual_visits", "sum"),
+             cap_total=("visit_cap", "sum"),
+             avg_visits=("actual_visits", "mean"),
+             avg_pct=("pct_of_cap", "mean"))
+        .round(2).reset_index()
+    )
+    _hdr(ws4, 2,
+         ["Salesperson", "Segment", "Customers", "Actual Visits",
+          "Max Possible", "Avg Visits", "Avg % of Cap"],
+         "1F4E79")
+    for ri, (_, row) in enumerate(sp_seg.iterrows()):
+        r   = ri + 3
+        seg = row["rfm_segment_final"]
+        for c, v in enumerate(
+            [row["sales_id"], seg, int(row["customers"]), int(row["actual"]),
+             int(row["cap_total"]), f"{row['avg_visits']:.1f}", f"{row['avg_pct']:.1f}%"], 1
+        ):
+            _cell(ws4, r, c, v,
+                  fill=SEG_FILL.get(seg, ALT) if c == 2 else (ALT if ri % 2 == 0 else None),
+                  bold=(c == 1),
+                  align="center" if c > 1 else "left",
+                  fg=SEG_FG.get(seg, "000000") if c == 2 else "000000")
+    _freeze(ws4)
+    _widths(ws4, [16, 12, 12, 14, 14, 12, 14])
+
+    wb.save(filepath)
+    print(f"Saved → {filepath}  "
+          f"({len(under_df)} under-visited | {len(full_df)} total customers)")
+    return filepath
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Folium map helpers  (updated for truck_group, km, new fields)
