@@ -719,7 +719,7 @@ if __name__ == "__main__":
 
     # ── Option A: run on Excel output ────────────────────────────────────────
     violations_df = diagnose_constraint_violations(
-        excel_file         = r"D:\Data Science\Basamh\JP_Yash\journey-planner\monthly_plan_fixed_holiday.xlsx",
+        excel_file         = r"D:\Data Science\Basamh\JP_Yash\journey-planner\jp_data_output\monthly_plan_for_2026-07-01.xlsx",
         daily_work_minutes = 480,
         avg_visit_min      = 22,
         avg_speed_kmh      = 32.0,

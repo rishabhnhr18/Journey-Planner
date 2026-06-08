@@ -63,7 +63,10 @@ from typing import Any, Optional
 import numpy as np
 import pandas as pd
 from ortools.sat.python import cp_model
+from ortools.constraint_solver import routing_enums_pb2
+from ortools.constraint_solver import pywrapcp
 
+SEG_CAPS = {"High": 4, "Medium": 2, "Low": 1}
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Tiny haversine helper
@@ -77,6 +80,24 @@ def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     dlam = math.radians(lon2 - lon1)
     a    = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
     return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def _kmeans_centroids(coords: np.ndarray, k: int, max_iter: int = 20) -> np.ndarray:
+    if len(coords) <= k:
+        return coords
+    rng = np.random.default_rng(42)
+    centroids = coords[rng.choice(len(coords), k, replace=False)]
+    for _ in range(max_iter):
+        dists = np.linalg.norm(coords[:, np.newaxis] - centroids, axis=2)
+        labels = np.argmin(dists, axis=1)
+        new_centroids = np.array([
+            coords[labels == j].mean(axis=0) if np.any(labels == j) else centroids[j]
+            for j in range(k)
+        ])
+        if np.allclose(centroids, new_centroids):
+            break
+        centroids = new_centroids
+    return centroids
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -100,6 +121,7 @@ class MultiScheduleResult:
     daily_schedule:       pd.DataFrame
     unvisited_customers:     pd.DataFrame   # customers who received 0 visits (capacity overflow)
     under_visited_customers: pd.DataFrame   # customers with >0 but < segment cap visits
+    daily_visit_plan:        pd.DataFrame   # compact: sales_id | schedule_date | customer_visits (list of dicts)
     salesperson_results:     dict[str, SalespersonScheduleResult] = field(default_factory=dict)
     territory_warehouses:    dict[str, tuple[float, float]]       = field(default_factory=dict)
 
@@ -109,8 +131,8 @@ class MultiScheduleResult:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def get_max_visits(segment: str) -> int:
-    # return {"High": 4, "Medium": 2, "Low": 1}.get(segment, 1)
-    return {"High": 30, "Medium": 15, "Low": 10}.get(segment,10)
+    return SEG_CAPS.get(segment, 1)
+    # return {"High": 30, "Medium": 15, "Low": 10}.get(segment,10)
 
 
 def get_segment_priority_weight(segment: str) -> int:
@@ -250,6 +272,38 @@ def _diagnose_infeasible(
     return diagnostics
 
 
+def _report_failure_diagnostics(
+    solver: cp_model.CpSolver,
+    status: int,
+    territory_id: int,
+    truck_group: str,
+    visit: dict,
+    assigned: dict,
+    customer_ids: list[str],
+    sp_ids: list[str],
+    valid_dates: list[pd.Timestamp],
+    cust_lookup: dict,
+    sp_is_cold: dict[str, bool],
+    avg_visit_minutes: int,
+    travel_mins: dict[tuple[str, str], int],
+    daily_work_minutes: int,
+) -> None:
+    status_name = solver.StatusName(status)
+    print(f"\n  ❌ [{territory_id}/{truck_group}] CP-SAT returned: {status_name}")
+    print(f"     Variables : {len(visit) + len(assigned)}")
+    print(f"     Customers : {len(customer_ids)}")
+    print(f"     Salespeople: {len(sp_ids)}")
+    print(f"     Valid dates: {len(valid_dates)}")
+    diagnostics = _diagnose_infeasible(
+        customer_ids, sp_ids, valid_dates, cust_lookup,
+        sp_is_cold, avg_visit_minutes, travel_mins, daily_work_minutes, truck_group,
+    )
+    print(f"\n  ── Constraint failure analysis ──")
+    for i, msg in enumerate(diagnostics, 1):
+        print(f"     [{i}] {msg}")
+    print()
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Daily route post-processor  (nearest-neighbour + km tracking)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -257,11 +311,10 @@ def _diagnose_infeasible(
 class DailyRoutePlanner:
     """
     Given a day's list of customers (already assigned to a salesperson),
-    orders them by nearest-neighbour from the warehouse, then computes:
+    orders them using Google OR-Tools Routing Solver (VRP/TSP), then computes:
       route_leg_km        — one-way distance from previous stop
       cumulative_route_km — running total km for the day
     """
-
     def get_route(
         self,
         day_schedule: pd.DataFrame,
@@ -271,6 +324,97 @@ class DailyRoutePlanner:
         if day_schedule.empty:
             return day_schedule.copy()
 
+        df_c = day_schedule.copy().reset_index(drop=True)
+        n_cust = len(df_c)
+
+        if n_cust == 1:
+            row = df_c.loc[0].to_dict()
+            leg_km = _haversine_km(start_lat, start_lng, float(row["gps_lat"]), float(row["gps_lng"]))
+            row["route_leg_km"] = round(leg_km, 3)
+            row["cumulative_route_km"] = round(leg_km, 3)
+            result = pd.DataFrame([row])
+            result["route_rank"] = [1]
+            return result
+
+        # Setup node coordinates mapping: node 0 = warehouse, node 1..N = customers
+        def _get_node_coords(node_idx: int) -> tuple[float, float]:
+            if node_idx == 0:
+                return (start_lat, start_lng)
+            row_c = df_c.loc[node_idx - 1]
+            return (float(row_c["gps_lat"]), float(row_c["gps_lng"]))
+
+        # Manager and Routing Model
+        n_nodes = n_cust + 1
+        manager = pywrapcp.RoutingIndexManager(n_nodes, 1, 0)
+        routing = pywrapcp.RoutingModel(manager)
+
+        # Distance callback: distance from any node to node 0 (warehouse) is 0 to enforce one-way
+        def distance_callback(from_index, to_index):
+            from_node = manager.IndexToNode(from_index)
+            to_node = manager.IndexToNode(to_index)
+            if to_node == 0:
+                return 0
+            lat_i, lng_i = _get_node_coords(from_node)
+            lat_j, lng_j = _get_node_coords(to_node)
+            # multiply by 1000 to get meters for integer precision
+            return int(_haversine_km(lat_i, lng_i, lat_j, lng_j) * 1000)
+
+        transit_callback_index = routing.RegisterTransitCallback(distance_callback)
+        routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
+
+        # Solving Parameters
+        search_parameters = pywrapcp.DefaultRoutingSearchParameters()
+        search_parameters.first_solution_strategy = (
+            routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
+        )
+        search_parameters.local_search_metaheuristic = (
+            routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
+        )
+        search_parameters.time_limit.seconds = 1  # solve very fast since it's small (TSP)
+
+        solution = routing.SolveWithParameters(search_parameters)
+
+        if not solution:
+            # Fallback to simple nearest neighbour if routing solver fails
+            print("  ⚠️  Routing solver failed to find solution. Falling back to Nearest Neighbour.")
+            return self._nn_fallback(day_schedule, start_lat, start_lng)
+
+        # Reconstruct route from solution
+        index = routing.Start(0)
+        route_indices = []
+        while not routing.IsEnd(index):
+            node = manager.IndexToNode(index)
+            if node > 0:
+                route_indices.append(node - 1)
+            index = solution.Value(routing.NextVar(index))
+
+        # Reorder DataFrame rows based on optimal VRP route
+        ordered_df = df_c.iloc[route_indices].copy().reset_index(drop=True)
+
+        # Compute legs and cumulative km
+        route: list[dict] = []
+        cur_lat, cur_lng = start_lat, start_lng
+        cumulative_km = 0.0
+
+        for idx, row in ordered_df.iterrows():
+            leg_km = _haversine_km(cur_lat, cur_lng, float(row["gps_lat"]), float(row["gps_lng"]))
+            cumulative_km += leg_km
+            row_dict = row.to_dict()
+            row_dict["route_leg_km"] = round(leg_km, 3)
+            row_dict["cumulative_route_km"] = round(cumulative_km, 3)
+            route.append(row_dict)
+            cur_lat, cur_lng = float(row["gps_lat"]), float(row["gps_lng"])
+
+        result = pd.DataFrame(route)
+        result["route_rank"] = range(1, len(result) + 1)
+        return result
+
+    def _nn_fallback(
+        self,
+        day_schedule: pd.DataFrame,
+        start_lat: float,
+        start_lng: float,
+    ) -> pd.DataFrame:
         unvisited = day_schedule.copy().reset_index(drop=True)
         route: list[dict] = []
         cur_lat, cur_lng = start_lat, start_lng
@@ -383,46 +527,41 @@ class TerritoryScheduler:
                 for sid in sp_ids
             }
             cust_lookup = customers.set_index("customer_id").to_dict("index")
-
-            # ── Pairwise distance matrix (warehouse=node 0, customers=node 1..N) ──
-            # Used by AddCircuit constraints to compute REAL stop-to-stop travel
-            # instead of a flat average.
-            cid_to_node: dict[str, int] = {cid: i + 1 for i, cid in enumerate(customer_ids)}
-            node_to_cid: dict[int, str] = {i + 1: cid for i, cid in enumerate(customer_ids)}
-            n_nodes = len(customer_ids) + 1  # node 0 = warehouse/depot
-
-            def _node_coords(node_idx: int) -> tuple[float, float]:
-                if node_idx == 0:
-                    return (warehouse_lat, warehouse_lng)
-                c = cust_lookup[node_to_cid[node_idx]]
-                return (float(c["gps_lat"]), float(c["gps_lng"]))
-
-            # dist_min_mtx[(i,j)] = travel minutes (integer) from node i to node j
-            dist_min_mtx: dict[tuple[int, int], int] = {}
-            for i in range(n_nodes):
-                lat_i, lng_i = _node_coords(i)
-                for j in range(n_nodes):
+            
+            # ── Calculate direct travel times ──────────────────────────────
+            # Calculate warehouse-to-customer travel times
+            _wh_legs = []
+            for cid in customer_ids:
+                c = cust_lookup[cid]
+                km = _haversine_km(warehouse_lat, warehouse_lng, float(c["gps_lat"]), float(c["gps_lng"]))
+                _wh_legs.append(max(1, round(km / avg_speed_kmph * 60)))
+            
+            # Calculate all pairwise inter-customer travel times
+            _all_inter = []
+            for i, cid1 in enumerate(customer_ids):
+                c1 = cust_lookup[cid1]
+                lat1, lng1 = float(c1["gps_lat"]), float(c1["gps_lng"])
+                for j, cid2 in enumerate(customer_ids):
                     if i == j:
-                        dist_min_mtx[(i, j)] = 0
                         continue
-                    lat_j, lng_j = _node_coords(j)
-                    km = _haversine_km(lat_i, lng_i, lat_j, lng_j)
-                    dist_min_mtx[(i, j)] = max(1, round(km / avg_speed_kmph * 60))
+                    c2 = cust_lookup[cid2]
+                    lat2, lng2 = float(c2["gps_lat"]), float(c2["gps_lng"])
+                    km = _haversine_km(lat1, lng1, lat2, lng2)
+                    _all_inter.append(max(1, round(km / avg_speed_kmph * 60)))
 
-            # For diagnostics / daily-cap fallback, compute rough averages
-            _all_inter = [dist_min_mtx[(i, j)]
-                          for i in range(1, n_nodes) for j in range(1, n_nodes) if i != j]
-            avg_leg_travel_min = max(1, round(float(np.mean(_all_inter)))) if _all_inter else 4
-            _wh_legs = [dist_min_mtx[(0, j)] for j in range(1, n_nodes)]
+            # Scale down the raw average pairwise distance to account for geographic clustering of sequential stops
+            avg_leg_travel_min = max(1, round(float(np.mean(_all_inter)) * 0.35)) if _all_inter else 4
             wh_leg_min = max(0, round(float(np.mean(_wh_legs)))) if _wh_legs else 5
 
             effective_daily_minutes = daily_work_minutes
 
-            print(f"  [{territory_id}/{truck_group}] pairwise matrix: "
-                  f"{n_nodes} nodes, avg_wh_leg={wh_leg_min}min, "
+            print(f"  [{territory_id}/{truck_group}] averages calculated: "
+                  f"{len(customer_ids)} customers, avg_wh_leg={wh_leg_min}min, "
                   f"avg_inter={avg_leg_travel_min}min, budget={effective_daily_minutes}min")
 
             # Legacy travel_mins dict kept for diagnostics function
+            #if the solution comes out to be infeauble some clipping of other seg_caps to be used as fallback
+            #done done
             travel_mins: dict[tuple[str, str], int] = {}
             for cid in customer_ids:
                 for sid in sp_ids:
@@ -503,9 +642,22 @@ class TerritoryScheduler:
                     print(f"  [{territory_id}/cold] WARNING: No cold-capable SP found. "
                         "Allowing all SPs for cold customers as fallback.")
 
-            # NOTE: Min-1-visit removed from CP-SAT. Solver maximises weighted
-            # visits within capacity. 0-visit → unvisited_customers;
-            # below-cap → under_visited_customers.
+            # ── CONSTRAINT 3b: Every customer gets at least 1 visit ────────────
+            # Ensures no customer is left unvisited when capacity is available.
+            # Guard: only enforce when total daily slots can absorb all customers.
+
+            #done done
+            total_slots_available = sum(sp_daily_cap[sid] * len(valid_dates) for sid in sp_ids)
+            # if len(customer_ids) <= total_slots_available:
+            #     for cid in customer_ids:
+            #         model.Add(
+            #             sum(visit[(cid, sid, d)] for sid in sp_ids for d in valid_dates) >= 1
+            #         )
+            #     print(f"  [{territory_id}/{truck_group}] min-1-visit ENFORCED "
+            #           f"({len(customer_ids)} customers ≤ {total_slots_available} slots)")
+            # else:
+            #     print(f"  [{territory_id}/{truck_group}] min-1-visit SKIPPED — "
+            #           f"{len(customer_ids)} customers > {total_slots_available} slots")
 
             # ── CONSTRAINT 4: Max visits per month (by RFM segment) ──────────────
             for cid in customer_ids:
@@ -514,67 +666,31 @@ class TerritoryScheduler:
                     sum(visit[(cid, sid, d)] for sid in sp_ids for d in valid_dates) <= max_v
                 )
 
-            # ── CONSTRAINT 6: Per-salesperson daily time budget (CIRCUIT-BASED) ──
-            # Uses AddCircuit to model actual stop-to-stop routing.
-            # Travel time is computed from real pairwise distances, not a flat average.
-            # Node 0 = warehouse/depot; nodes 1..N = customers.
-            # Unvisited customers get self-loop arcs; visited ones form a tour.
+            # ── CONSTRAINT 6: Per-salesperson daily time budget (LINEAR APPROXIMATION) ──
+            # Travel time is approximated linearly as:
+            #   total_time = sum((service + inter_leg_travel) * visit) + warehouse_overhead * has_visits
+            # This allows the solver to run in milliseconds.
+            wh_overhead = max(0, wh_leg_min - avg_leg_travel_min)
             for sid in sp_ids:
                 for d in valid_dates:
-                    arcs: list[tuple[int, int, cp_model.IntVar]] = []
-
-                    # Depot self-loop: active when SP visits nobody this day
-                    depot_self = model.NewBoolVar(
-                        f"arc_{sid}_{d.strftime('%Y%m%d')}_0_0")
-                    arcs.append((0, 0, depot_self))
-
-                    for i in range(n_nodes):
-                        for j in range(n_nodes):
-                            if i == j:
-                                if i == 0:
-                                    continue          # already added depot self-loop
-                                # Customer self-loop: active iff NOT visited this day
-                                cid_i = node_to_cid[i]
-                                arcs.append((i, i, visit[(cid_i, sid, d)].Not()))
-                            else:
-                                lit = model.NewBoolVar(
-                                    f"arc_{sid}_{d.strftime('%Y%m%d')}_{i}_{j}")
-                                arcs.append((i, j, lit))
-                                # Arc i→j can only be active if both endpoints are "in the tour"
-                                if i > 0:
-                                    model.AddImplication(lit, visit[(node_to_cid[i], sid, d)])
-                                if j > 0:
-                                    model.AddImplication(lit, visit[(node_to_cid[j], sid, d)])
-
-                    model.AddCircuit(arcs)
-
-                    # Total travel time = sum of dist × arc for non-self-loop arcs
-                    travel_expr = []
-                    for (i, j, lit) in arcs:
-                        if i != j:
-                            travel_expr.append(dist_min_mtx[(i, j)] * lit)
-
-                    # Service time = visit_minutes × each visited customer
-                    service_expr = [
-                        avg_visit_minutes * visit[(cid, sid, d)]
-                        for cid in customer_ids
-                    ]
-
-                    # Total (travel + service) ≤ daily budget
+                    has_visits = model.NewBoolVar(f"has_visits_{sid}_{d.strftime('%Y%m%d')}")
+                    model.AddMaxEquality(has_visits, [visit[(cid, sid, d)] for cid in customer_ids])
+                    
                     model.Add(
-                        sum(travel_expr) + sum(service_expr)
+                        sum((avg_visit_minutes + avg_leg_travel_min) * visit[(cid, sid, d)] for cid in customer_ids)
+                        + wh_overhead * has_visits
                         <= effective_daily_minutes
                     )
 
             # (Constraint 7 — daily count cap — removed: the circuit time budget
             # now naturally limits how many stops fit in a day with real distances.)
 
-            # # ── CONSTRAINT 8: Each customer visited at most once per day ─────────
-            # for cid in customer_ids:
-            #     for d in valid_dates:
-            #         model.Add(
-            #             sum(visit[(cid, sid, d)] for sid in sp_ids) <= 1
-            #         )
+            # ── CONSTRAINT 8: Each customer visited at most once per day ─────────
+            for cid in customer_ids:
+                for d in valid_dates:
+                    model.Add(
+                        sum(visit[(cid, sid, d)] for sid in sp_ids) <= 1
+                    )
 
             # ── CONSTRAINT 9: SP personal blocked dates (annual leave / sick leave) ─
             # sp_valid_dates maps each SP to the dates they CAN work (territory holidays
@@ -616,13 +732,13 @@ class TerritoryScheduler:
             # Tier values — gap is so large that ALL Low visits combined < 1 Medium visit,
             # and ALL Medium visits combined < 1 High visit.
             # This forces strict priority: High fully saturated → Medium → Low.
-            _TIER = {"High": 1_000_000_000, "Medium": 1_000_000, "Low": 1}
+            _TIER = {"High": 1_000_000_000, "Medium": 10_000_000, "Low": 100_000}
             PREFERRED_DAY_BONUS = 50   # tiny tiebreaker, never bridges segments
 
             for cid in customer_ids:
                 info         = cust_lookup[cid]
                 segment      = info.get("rfm_segment_final", "Low")
-                tier         = _TIER.get(segment, 1)
+                tier         = _TIER.get(segment, 100_000)
                 score_b      = int(info.get("final_customer_score", 0.5) * 100)
                 weight       = tier + score_b             # score is tiebreaker within tier
                 pref_day     = info.get("preferred_visit_day", "")
@@ -639,7 +755,7 @@ class TerritoryScheduler:
             # Implemented as soft objective terms using auxiliary BoolVars, not hard
             # constraints, so the solver can trade off if calendar leaves no choice.
             WEEKLY_CADENCE_BONUS  = 500_000_000   # half a High visit — encourages spread, never sacrifices a visit
-            ALT_WEEK_BONUS        = 500_000       # half a Medium visit
+            ALT_WEEK_BONUS        = 5_000_000       # half a Medium visit
 
             for cid in customer_ids:
                 segment = cust_lookup[cid].get("rfm_segment_final", "Low")
@@ -665,6 +781,8 @@ class TerritoryScheduler:
                     # (Medium gets max 2 visits, so this pushes them to separate weeks.)
                     for wi, wa in enumerate(week_nums):
                         for wb in week_nums[wi + 1:]:
+                            if wb - wa < 2:  # Skip consecutive weeks to enforce alternate weeks
+                                continue
                             dates_a = [d for d in valid_dates if date_to_week[d] == wa]
                             dates_b = [d for d in valid_dates if date_to_week[d] == wb]
                             if not dates_a or not dates_b:
@@ -683,24 +801,63 @@ class TerritoryScheduler:
                             model.AddMinEquality(both_weeks, [has_a, has_b])
                             obj_terms.append(ALT_WEEK_BONUS * both_weeks)
 
-            # ── Compactness bonus (lightweight — no extra variables) ──────────────
-            # Reward each customer for being close to the territory centroid.
-            # Replaces the O(n²) BoolVar pair loop which created thousands of extra
-            # variables and constraints, causing normal-group timeouts.
-            if customer_ids:
-                centroid_lat = float(np.mean([cust_lookup[c]["gps_lat"] for c in customer_ids]))
-                centroid_lng = float(np.mean([cust_lookup[c]["gps_lng"] for c in customer_ids]))
-                COMPACT_BONUS = 2_000
+            # ── Compactness bonus via salesperson-to-centroid matching ──────────────
+            if customer_ids and len(sp_ids) > 1 and len(customer_ids) >= len(sp_ids):
+                coords = np.array([[float(cust_lookup[cid]["gps_lat"]), float(cust_lookup[cid]["gps_lng"])] for cid in customer_ids])
+                centroids = _kmeans_centroids(coords, len(sp_ids))
+                
+                # Match variables: sp_to_centroid[(sid, k)] = 1 if sid is assigned to centroid k
+                sp_to_centroid = {}
+                for sid in sp_ids:
+                    for k in range(len(sp_ids)):
+                        sp_to_centroid[(sid, k)] = model.NewBoolVar(f"sp_cent_{sid}_{k}")
+                
+                # 1-to-1 matching constraints
+                for sid in sp_ids:
+                    model.Add(sum(sp_to_centroid[(sid, k)] for k in range(len(sp_ids))) == 1)
+                for k in range(len(sp_ids)):
+                    model.Add(sum(sp_to_centroid[(sid, k)] for sid in sp_ids) == 1)
+                
+                # Link variables and objective reward
+                link = {}
+                COMPACT_BONUS = 2000
                 for cid in customer_ids:
-                    dist_c = _haversine_km(
-                        float(cust_lookup[cid]["gps_lat"]),
-                        float(cust_lookup[cid]["gps_lng"]),
-                        centroid_lat, centroid_lng,
-                    )
-                    proximity = max(0, int((1.0 - min(dist_c / 50.0, 1.0)) * COMPACT_BONUS))
-                    if proximity > 0:
-                        for sid in sp_ids:
-                            obj_terms.append(proximity * assigned[(cid, sid)])
+                    c_lat = float(cust_lookup[cid]["gps_lat"])
+                    c_lng = float(cust_lookup[cid]["gps_lng"])
+                    proximity_c = []
+                    for k, cent in enumerate(centroids):
+                        dist_c = _haversine_km(c_lat, c_lng, cent[0], cent[1])
+                        proximity = max(0, int((1.0 - min(dist_c / 50.0, 1.0)) * COMPACT_BONUS))
+                        proximity_c.append(proximity)
+                        
+                    for sid in sp_ids:
+                        for k in range(len(sp_ids)):
+                            if proximity_c[k] > 0:
+                                link[(cid, sid, k)] = model.NewBoolVar(f"lnk_{cid}_{sid}_{k}")
+                                model.Add(link[(cid, sid, k)] <= assigned[(cid, sid)])
+                                model.Add(link[(cid, sid, k)] <= sp_to_centroid[(sid, k)])
+                                obj_terms.append(proximity_c[k] * link[(cid, sid, k)])
+
+            # ── Driver workload balancing ───────────────────────────────────────────
+            if len(sp_ids) > 1:
+                sp_dates_dict = sp_valid_dates if sp_valid_dates else {}
+                sp_total_visits = {}
+                for sid in sp_ids:
+                    sp_total_visits[sid] = sum(visit[(cid, sid, d)] for cid in customer_ids for d in valid_dates)
+                
+                BALANCING_PENALTY = 500  # soft penalty weight per unit of difference
+                for i, sid1 in enumerate(sp_ids):
+                    dates1 = sp_dates_dict.get(sid1, valid_dates)
+                    w1 = len(dates1)
+                    for sid2 in sp_ids[i+1:]:
+                        dates2 = sp_dates_dict.get(sid2, valid_dates)
+                        w2 = len(dates2)
+                        if w1 > 0 and w2 > 0:
+                            diff = model.NewIntVar(-100000, 100000, f"diff_{sid1}_{sid2}")
+                            model.Add(diff == sp_total_visits[sid1] * w2 - sp_total_visits[sid2] * w1)
+                            abs_diff = model.NewIntVar(0, 100000, f"abs_diff_{sid1}_{sid2}")
+                            model.AddAbsEquality(abs_diff, diff)
+                            obj_terms.append(-BALANCING_PENALTY * abs_diff)
 
             model.Maximize(sum(obj_terms))
 
@@ -711,8 +868,12 @@ class TerritoryScheduler:
             solver.parameters.max_time_in_seconds = t_limit
             solver.parameters.num_search_workers  = max(4, min(os.cpu_count() or 4, 16))
             solver.parameters.log_search_progress = False
+            # Allow solver to declare OPTIMAL when within 0.01% of proven bound.
+            # Without this, the extreme tier weights (1B / 1M / 1) make the
+            # absolute gap enormous even when the solution is practically perfect.
+            solver.parameters.relative_gap_limit  = 1e-4
 
-            # Round-robin hint — seed solver with a good starting solution
+            # Greedy round-robin hint — seed solver with a good starting solution
             # so it polishes toward optimal rather than searching from scratch.
             sorted_custs = sorted(customer_ids,
                                 key=lambda c: cust_lookup[c].get("final_customer_score", 0.5),
@@ -856,6 +1017,7 @@ class MultiSalespersonScheduler:
         self.solver_time_seconds = solver_time_seconds
         self._ter_scheduler  = TerritoryScheduler(solver_time_seconds=solver_time_seconds)
         self._route_planner  = DailyRoutePlanner()
+        self.avg_speed_kmph = 32
 
     def create_schedules(
         self,
@@ -993,11 +1155,14 @@ class MultiSalespersonScheduler:
                 # Dynamic solver time — normal groups are much larger than cold;
                 # give them more budget to reach OPTIMAL.
                 n_vars       = len(group_custs) * len(group_sps) * len(all_valid_dates)
-                time_ceiling = 120 if group_name == "cold" else 600
+                time_ceiling = 300 if group_name == "cold" else 600
                 dynamic_time = max(
                     self.solver_time_seconds,
                     min(time_ceiling, len(group_custs) * len(group_sps) * 3),
                 )
+                
+                dynamic_time = 300 if group_name == "cold" else 600
+
                 print(f"\n  [{tid}/{group_name}] {len(group_custs)} customers × "
                       f"{len(group_sps)} SPs × {len(all_valid_dates)} days "
                       f"→ ~{n_vars} vars | timeout={dynamic_time}s")
@@ -1023,6 +1188,21 @@ class MultiSalespersonScheduler:
 
                 # ── Post-process: nearest-neighbour routes + km tracking ──────
                 detailed = self._apply_route_ordering(detailed, wh_lat, wh_lng)
+
+                # ── Greedy top-up: fill remaining daily capacity ──────────────
+                detailed = self._greedy_topup(
+                    detailed        = detailed,
+                    group_custs     = group_custs,
+                    valid_dates     = all_valid_dates,
+                    wh_lat          = wh_lat,
+                    wh_lng          = wh_lng,
+                    avg_visit_minutes  = avg_visit_minutes,
+                    avg_speed_kmph     = avg_speed_kmph,
+                    daily_work_minutes = daily_work_minutes,
+                    territory_id    = tid,
+                    truck_group     = group_name,
+                    sp_valid_dates  = group_sp_valid_dates,
+                )
 
                 all_detailed.append(detailed)
 
@@ -1071,7 +1251,7 @@ class MultiSalespersonScheduler:
         #
         # All three buckets are fully populated every run; none is silently dropped.
 
-        _CAPS = {"High": 30, "Medium": 15, "Low": 10}
+        _CAPS = SEG_CAPS
 
         scheduled_ids = set(combined["customer_id"].unique()) if not combined.empty else set()
 
@@ -1137,6 +1317,9 @@ class MultiSalespersonScheduler:
         else:
             print(f"\n  ✅  All scheduled customers reached their full visit cap.")
 
+        # ── Build compact daily visit plan ───────────────────────────────────
+        daily_visit_plan = self._build_daily_visit_plan(combined)
+
         return MultiScheduleResult(
             detailed_schedule       = combined,
             cold_schedule           = cold_schedule,
@@ -1144,11 +1327,62 @@ class MultiSalespersonScheduler:
             daily_schedule          = combined_daily,
             unvisited_customers     = unvisited_df,
             under_visited_customers = under_df,
+            daily_visit_plan        = daily_visit_plan,
             salesperson_results     = sp_results,
             territory_warehouses    = ter_warehouses,
         )
 
     # ── Internal helpers ──────────────────────────────────────────────────────
+
+    @staticmethod
+    def _build_daily_visit_plan(combined: pd.DataFrame) -> pd.DataFrame:
+        """
+        Build a compact daily visit plan from the detailed schedule.
+
+        Returns a DataFrame with columns:
+            territory_id | sales_id | schedule_date | truck_group | customers
+        where `customers` is a list of dicts:
+            [{"customer_id": ..., "shop_name": ..., "rfm_segment": ..., "route_rank": ...}, ...]
+        ordered by route_rank (nearest-neighbour from warehouse).
+        """
+        if combined.empty:
+            return pd.DataFrame(columns=[
+                "territory_id", "sales_id", "schedule_date", "truck_group", "customers",
+            ])
+
+        if "route_rank" in combined.columns:
+            combined = combined.sort_values(
+                ["territory_id", "sales_id", "schedule_date", "route_rank"]
+            )
+
+        rows: list[dict] = []
+        group_keys = ["territory_id", "sales_id", "schedule_date", "truck_group"]
+        for keys, grp in combined.groupby(group_keys):
+            tid, sid, d, tg = keys
+            if "route_rank" in grp.columns:
+                grp = grp.sort_values("route_rank")
+            customers = [
+                {
+                    "route_rank":   int(r.get("route_rank", 0)) if pd.notna(r.get("route_rank")) else i + 1,
+                    "customer_id":  r["customer_id"],
+                    "shop_name":    r.get("shop_name", ""),
+                    "rfm_segment":  r.get("rfm_segment_final", ""),
+                }
+                for i, (_, r) in enumerate(grp.iterrows())
+            ]
+            rows.append({
+                "territory_id":  tid,
+                "sales_id":      sid,
+                "schedule_date": pd.Timestamp(d).strftime("%Y-%m-%d"),
+                "truck_group":   tg,
+                "customers":     customers,
+            })
+
+        return (
+            pd.DataFrame(rows)
+            .sort_values(["territory_id", "sales_id", "schedule_date"])
+            .reset_index(drop=True)
+        )
 
     @staticmethod
     def _build_full_customer_df(customer_df: pd.DataFrame, rfm_scores_df: pd.DataFrame) -> pd.DataFrame:
@@ -1164,6 +1398,192 @@ class MultiSalespersonScheduler:
         merged["final_customer_score"] = merged["final_customer_score"].fillna(0.0)
         return merged
 
+    def _greedy_topup(
+        self,
+        detailed: pd.DataFrame,
+        group_custs: pd.DataFrame,
+        valid_dates: list[pd.Timestamp],
+        wh_lat: float, wh_lng: float,
+        avg_visit_minutes: int,
+        avg_speed_kmph: float,
+        daily_work_minutes: int,
+        territory_id: str,
+        truck_group: str,
+        sp_valid_dates: dict[str, list[pd.Timestamp]] | None = None,
+    ) -> pd.DataFrame:
+        """
+        Post-solve greedy fill: for each (SP, day) with remaining time budget,
+        insert extra visits for under-visited customers assigned to that SP.
+
+        Uses the real NN-routed distances (route_leg_km must be populated)
+        to compute current time usage, then tries inserting the highest-priority
+        under-visited customers that fit in the remaining minutes.
+        """
+        if detailed.empty:
+            return detailed
+
+        _CAPS = SEG_CAPS
+        cust_lookup = group_custs.set_index("customer_id").to_dict("index")
+
+        # Customer → assigned SP (from solver output)
+        cust_sp = detailed.groupby("customer_id")["sales_id"].first().to_dict()
+
+        # For customers not in solver output, assign to the closest salesperson in this group
+        sp_coords = {}
+        for sid, grp in detailed.groupby("sales_id"):
+            sp_coords[sid] = (grp["gps_lat"].mean(), grp["gps_lng"].mean())
+
+        for cid in group_custs["customer_id"]:
+            if cid not in cust_sp:
+                # Find closest salesperson in this group based on average scheduled coordinates
+                c_lat = float(cust_lookup[cid]["gps_lat"])
+                c_lng = float(cust_lookup[cid]["gps_lng"])
+                best_sid = None
+                min_d = float('inf')
+                for sid, coords in sp_coords.items():
+                    d = _haversine_km(c_lat, c_lng, coords[0], coords[1])
+                    if d < min_d:
+                        min_d = d
+                        best_sid = sid
+                # If salesperson average coordinates are not available (e.g. no visits scheduled yet),
+                # assign to the first salesperson in the group
+                if best_sid is None:
+                    active_sps = list(sp_coords.keys())
+                    if active_sps:
+                        best_sid = active_sps[0]
+                if best_sid is not None:
+                    cust_sp[cid] = best_sid
+
+        # Current visit count per customer (including solver output only)
+        visit_counts = detailed.groupby("customer_id").size().to_dict()
+
+        # Build per-SP list of under-visited candidates, sorted by priority
+        sp_candidates: dict[str, list[str]] = {}
+        for cid, sid in cust_sp.items():
+            if cid not in cust_lookup:
+                continue
+            seg    = cust_lookup[cid].get("rfm_segment_final", "Low")
+            cap    = _CAPS.get(seg, 10)
+            actual = visit_counts.get(cid, 0)
+            if actual < cap:
+                sp_candidates.setdefault(sid, []).append(cid)
+
+        for sid in sp_candidates:
+            sp_candidates[sid].sort(key=lambda c: (
+                -get_segment_priority_weight(cust_lookup[c].get("rfm_segment_final", "Low")),
+                -cust_lookup[c].get("final_customer_score", 0.0),
+            ))
+
+        if not sp_candidates:
+            return detailed
+
+        # Track additional visits added (so we don't exceed cap)
+        added: dict[str, int] = {}
+        new_rows: list[dict] = []
+
+        for sid in detailed["sales_id"].unique():
+            candidates = sp_candidates.get(sid, [])
+            if not candidates:
+                continue
+
+            sp_dates = set(sp_valid_dates.get(sid, valid_dates)) if sp_valid_dates else set(valid_dates)
+
+            for d in sorted(valid_dates):
+                if d not in sp_dates:
+                    continue
+
+                day_df = detailed[
+                    (detailed["sales_id"] == sid) &
+                    (detailed["schedule_date"] == d)
+                ]
+                if day_df.empty:
+                    continue  # SP didn't work this day in solver output
+
+                # Compute current time usage from real routed distances
+                route_km   = float(day_df["route_leg_km"].sum()) if "route_leg_km" in day_df.columns else 0.0
+                travel_min = (route_km / avg_speed_kmph) * 60
+                service_min = len(day_df) * avg_visit_minutes
+                remaining   = daily_work_minutes - (travel_min + service_min)
+                
+                print(f"remaining time for {sid} is {remaining}")
+                print(f"Service min for {sid}: {service_min}")
+                print(f"Travel min for {sid}: {travel_min}")
+
+                if remaining < avg_visit_minutes + 2:
+                    continue  # not enough for even one more visit
+
+                # Last stop coords for cheapest-insertion estimate
+                if "route_rank" in day_df.columns:
+                    last = day_df.sort_values("route_rank").iloc[-1]
+                else:
+                    last = day_df.iloc[-1]
+                cur_lat, cur_lng = float(last["gps_lat"]), float(last["gps_lng"])
+
+                already_today = set(day_df["customer_id"].tolist())
+
+                for cid in candidates:
+                    if cid in already_today:
+                        continue
+                    total_visits = visit_counts.get(cid, 0) + added.get(cid, 0)
+                    seg = cust_lookup[cid].get("rfm_segment_final", "Low")
+                    if total_visits >= _CAPS.get(seg, 10):
+                        continue
+
+                    c_lat = float(cust_lookup[cid]["gps_lat"])
+                    c_lng = float(cust_lookup[cid]["gps_lng"])
+                    leg_km         = _haversine_km(cur_lat, cur_lng, c_lat, c_lng)
+                    leg_travel_min = (leg_km / avg_speed_kmph) * 60
+                    cost           = avg_visit_minutes + leg_travel_min
+
+                    if cost > remaining:
+                        continue
+
+                    # Insert this visit
+                    info = cust_lookup[cid]
+                    wh_km = _haversine_km(wh_lat, wh_lng, c_lat, c_lng)
+                    new_rows.append({
+                        "schedule_date":            d,
+                        "sales_id":                 sid,
+                        "territory_id":             territory_id,
+                        "customer_id":              cid,
+                        "truck_group":              truck_group,
+                        "shop_name":                info.get("shop_name", ""),
+                        "locality":                 info.get("locality", ""),
+                        "gps_lat":                  info.get("gps_lat"),
+                        "gps_lng":                  info.get("gps_lng"),
+                        "rfm_segment_final":        info.get("rfm_segment_final", "Low"),
+                        "final_customer_score":     info.get("final_customer_score", 0.0),
+                        "rfm_combined":             info.get("rfm_combined", 0.0),
+                        "customer_rank":            info.get("customer_rank", 0),
+                        "seasonality_score":        info.get("seasonality_score", 0.0),
+                        "territory_score":          info.get("territory_score", 0.0),
+                        "locality_score":           info.get("locality_score", 0.0),
+                        "rating_score":             info.get("rating_score", 0.0),
+                        "lifecycle_state":          info.get("lifecycle_state", "Active"),
+                        "cold_truck_required":      info.get("cold_truck_required", False),
+                        "estimated_visit_minutes":  avg_visit_minutes,
+                        "estimated_travel_minutes": round(leg_travel_min, 1),
+                        "warehouse_to_customer_km": round(wh_km, 3),
+                        "route_leg_km":             None,
+                        "cumulative_route_km":      None,
+                    })
+                    remaining  -= cost
+                    already_today.add(cid)
+                    added[cid]  = added.get(cid, 0) + 1
+                    cur_lat, cur_lng = c_lat, c_lng
+
+                    if remaining < avg_visit_minutes + 2:
+                        break
+
+        if new_rows:
+            n_added = len(new_rows)
+            new_df  = pd.DataFrame(new_rows)
+            detailed = pd.concat([detailed, new_df], ignore_index=True)
+            # Re-run NN route ordering so route_leg_km is correct with new stops
+            detailed = self._apply_route_ordering(detailed, wh_lat, wh_lng)
+            print(f"  📈 [{territory_id}/{truck_group}] Greedy top-up inserted "
+                  f"{n_added} extra visit(s) across {len(set(r['customer_id'] for r in new_rows))} customer(s)")
+        return detailed
 
     def _apply_route_ordering(
         self,
@@ -1205,7 +1625,8 @@ class MultiSalespersonScheduler:
                 "segment_breakdown":   routed["rfm_segment_final"].value_counts().to_dict(),
                 "avg_customer_score":  round(float(routed["final_customer_score"].mean()), 4),
                 "total_visit_min":     int(routed["estimated_visit_minutes"].sum()),
-                "total_travel_min":    int(routed["estimated_travel_minutes"].sum()),
+                # "total_travel_min":    int(routed["estimated_travel_minutes"].sum()),
+                "total_travel_min": int((total_leg_km / self.avg_speed_kmph) * 60),
                 "total_route_km":      round(float(total_leg_km), 3),
                 "customer_km_detail":  dict(zip(
                     routed["customer_id"].tolist(),
@@ -1233,6 +1654,64 @@ class MultiSalespersonScheduler:
             .reset_index(drop=True)
         )
 
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Daily visit plan helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def print_daily_visit_plan(result) -> None:
+    """
+    Pretty-print which customers each salesperson visits each day.
+
+    Usage:
+        result = scheduler.create_schedules(...)
+        print_daily_visit_plan(result)
+    """
+    plan = result.daily_visit_plan
+    if plan.empty:
+        print("No visits scheduled.")
+        return
+
+    for sid in sorted(plan["sales_id"].unique()):
+        sp_plan = plan[plan["sales_id"] == sid]
+        print(f"\n{'='*60}")
+        print(f"Salesperson: {sid}")
+        print(f"{'='*60}")
+
+        for _, row in sp_plan.iterrows():
+            date_str = row["schedule_date"]
+            customers = row["customers"]
+            truck     = row["truck_group"]
+            print(f"\n  {date_str}  [{truck}]  ({len(customers)} customers)")
+            print(f"  {'-'*44}")
+            for c in customers:
+                print(f"    {c['route_rank']:>2}. {c['customer_id']}  "
+                      f"{c['shop_name']}  [{c['rfm_segment']}]")
+
+
+def get_daily_visit_dict(result) -> dict[str, dict[str, list[str]]]:
+    """
+    Returns a nested dict:  { sales_id: { date_str: [customer_id, ...] } }
+    Customer IDs are in route order.
+
+    Usage:
+        plan = get_daily_visit_dict(result)
+        for sid, dates in plan.items():
+            for date, cids in dates.items():
+                print(sid, date, cids)
+    """
+    plan = result.daily_visit_plan
+    if plan.empty:
+        return {}
+
+    out: dict[str, dict[str, list[str]]] = {}
+    for _, row in plan.iterrows():
+        sid  = row["sales_id"]
+        d    = row["schedule_date"]
+        cids = [c["customer_id"] for c in row["customers"]]
+        out.setdefault(sid, {})[d] = cids
+    return out
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1285,7 +1764,7 @@ def export_under_visited_excel(
         print("No schedule data to export.")
         return filepath
 
-    _CAPS = {"High": 30, "Medium": 15, "Low": 10}
+    _CAPS = SEG_CAPS
 
     # ── Build per-customer base table ────────────────────────────────────────
     visit_counts = (

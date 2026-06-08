@@ -39,3 +39,7 @@ assests
 *.xls
 
 __pycache__
+
+greedy_output/
+jp_data_output/
+output/

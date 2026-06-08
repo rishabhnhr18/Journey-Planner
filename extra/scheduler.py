@@ -100,6 +100,7 @@ class MultiScheduleResult:
     daily_schedule:       pd.DataFrame
     unvisited_customers:     pd.DataFrame   # customers who received 0 visits (capacity overflow)
     under_visited_customers: pd.DataFrame   # customers with >0 but < segment cap visits
+    daily_visit_plan:        pd.DataFrame   # compact: sales_id | schedule_date | customer_visits (list of dicts)
     salesperson_results:     dict[str, SalespersonScheduleResult] = field(default_factory=dict)
     territory_warehouses:    dict[str, tuple[float, float]]       = field(default_factory=dict)
 
@@ -109,8 +110,8 @@ class MultiScheduleResult:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def get_max_visits(segment: str) -> int:
-    # return {"High": 4, "Medium": 2, "Low": 1}.get(segment, 1)
-    return {"High": 30, "Medium": 15, "Low": 10}.get(segment,10)
+    return {"High": 4, "Medium": 2, "Low": 1}.get(segment, 1)
+    # return {"High": 30, "Medium": 15, "Low": 10}.get(segment,10)
 
 
 def get_segment_priority_weight(segment: str) -> int:
@@ -569,12 +570,12 @@ class TerritoryScheduler:
             # (Constraint 7 — daily count cap — removed: the circuit time budget
             # now naturally limits how many stops fit in a day with real distances.)
 
-            # # ── CONSTRAINT 8: Each customer visited at most once per day ─────────
-            # for cid in customer_ids:
-            #     for d in valid_dates:
-            #         model.Add(
-            #             sum(visit[(cid, sid, d)] for sid in sp_ids) <= 1
-            #         )
+            # ── CONSTRAINT 8: Each customer visited at most once per day ─────────
+            for cid in customer_ids:
+                for d in valid_dates:
+                    model.Add(
+                        sum(visit[(cid, sid, d)] for sid in sp_ids) <= 1
+                    )
 
             # ── CONSTRAINT 9: SP personal blocked dates (annual leave / sick leave) ─
             # sp_valid_dates maps each SP to the dates they CAN work (territory holidays
@@ -856,6 +857,7 @@ class MultiSalespersonScheduler:
         self.solver_time_seconds = solver_time_seconds
         self._ter_scheduler  = TerritoryScheduler(solver_time_seconds=solver_time_seconds)
         self._route_planner  = DailyRoutePlanner()
+        self.avg_speed_kmph = 32
 
     def create_schedules(
         self,
@@ -993,7 +995,7 @@ class MultiSalespersonScheduler:
                 # Dynamic solver time — normal groups are much larger than cold;
                 # give them more budget to reach OPTIMAL.
                 n_vars       = len(group_custs) * len(group_sps) * len(all_valid_dates)
-                time_ceiling = 120 if group_name == "cold" else 600
+                time_ceiling = 90 if group_name == "cold" else 300
                 dynamic_time = max(
                     self.solver_time_seconds,
                     min(time_ceiling, len(group_custs) * len(group_sps) * 3),
@@ -1086,7 +1088,7 @@ class MultiSalespersonScheduler:
         #
         # All three buckets are fully populated every run; none is silently dropped.
 
-        _CAPS = {"High": 30, "Medium": 15, "Low": 10}
+        _CAPS = {"High": 4, "Medium": 2, "Low": 1}
 
         scheduled_ids = set(combined["customer_id"].unique()) if not combined.empty else set()
 
@@ -1152,6 +1154,9 @@ class MultiSalespersonScheduler:
         else:
             print(f"\n  ✅  All scheduled customers reached their full visit cap.")
 
+        # ── Build compact daily visit plan ───────────────────────────────────
+        daily_visit_plan = self._build_daily_visit_plan(combined)
+
         return MultiScheduleResult(
             detailed_schedule       = combined,
             cold_schedule           = cold_schedule,
@@ -1159,11 +1164,62 @@ class MultiSalespersonScheduler:
             daily_schedule          = combined_daily,
             unvisited_customers     = unvisited_df,
             under_visited_customers = under_df,
+            daily_visit_plan        = daily_visit_plan,
             salesperson_results     = sp_results,
             territory_warehouses    = ter_warehouses,
         )
 
     # ── Internal helpers ──────────────────────────────────────────────────────
+
+    @staticmethod
+    def _build_daily_visit_plan(combined: pd.DataFrame) -> pd.DataFrame:
+        """
+        Build a compact daily visit plan from the detailed schedule.
+
+        Returns a DataFrame with columns:
+            territory_id | sales_id | schedule_date | truck_group | customers
+        where `customers` is a list of dicts:
+            [{"customer_id": ..., "shop_name": ..., "rfm_segment": ..., "route_rank": ...}, ...]
+        ordered by route_rank (nearest-neighbour from warehouse).
+        """
+        if combined.empty:
+            return pd.DataFrame(columns=[
+                "territory_id", "sales_id", "schedule_date", "truck_group", "customers",
+            ])
+
+        if "route_rank" in combined.columns:
+            combined = combined.sort_values(
+                ["territory_id", "sales_id", "schedule_date", "route_rank"]
+            )
+
+        rows: list[dict] = []
+        group_keys = ["territory_id", "sales_id", "schedule_date", "truck_group"]
+        for keys, grp in combined.groupby(group_keys):
+            tid, sid, d, tg = keys
+            if "route_rank" in grp.columns:
+                grp = grp.sort_values("route_rank")
+            customers = [
+                {
+                    "route_rank":   int(r.get("route_rank", 0)) if pd.notna(r.get("route_rank")) else i + 1,
+                    "customer_id":  r["customer_id"],
+                    "shop_name":    r.get("shop_name", ""),
+                    "rfm_segment":  r.get("rfm_segment_final", ""),
+                }
+                for i, (_, r) in enumerate(grp.iterrows())
+            ]
+            rows.append({
+                "territory_id":  tid,
+                "sales_id":      sid,
+                "schedule_date": pd.Timestamp(d).strftime("%Y-%m-%d"),
+                "truck_group":   tg,
+                "customers":     customers,
+            })
+
+        return (
+            pd.DataFrame(rows)
+            .sort_values(["territory_id", "sales_id", "schedule_date"])
+            .reset_index(drop=True)
+        )
 
     @staticmethod
     def _build_full_customer_df(customer_df: pd.DataFrame, rfm_scores_df: pd.DataFrame) -> pd.DataFrame:
@@ -1203,7 +1259,10 @@ class MultiSalespersonScheduler:
         if detailed.empty:
             return detailed
 
-        _CAPS = {"High": 30, "Medium": 15, "Low": 10}
+        # _CAPS = {"High": 30, "Medium": 15, "Low": 10}
+        
+        _CAPS = {"High": 4, "Medium": 2, "Low": 1}
+        
         cust_lookup = group_custs.set_index("customer_id").to_dict("index")
 
         # Customer → assigned SP (from solver output)
@@ -1380,7 +1439,8 @@ class MultiSalespersonScheduler:
                 "segment_breakdown":   routed["rfm_segment_final"].value_counts().to_dict(),
                 "avg_customer_score":  round(float(routed["final_customer_score"].mean()), 4),
                 "total_visit_min":     int(routed["estimated_visit_minutes"].sum()),
-                "total_travel_min":    int(routed["estimated_travel_minutes"].sum()),
+                # "total_travel_min":    int(routed["estimated_travel_minutes"].sum()),
+                "total_travel_min": int((total_leg_km / self.avg_speed_kmph) * 60),
                 "total_route_km":      round(float(total_leg_km), 3),
                 "customer_km_detail":  dict(zip(
                     routed["customer_id"].tolist(),
@@ -1408,6 +1468,64 @@ class MultiSalespersonScheduler:
             .reset_index(drop=True)
         )
 
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Daily visit plan helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def print_daily_visit_plan(result) -> None:
+    """
+    Pretty-print which customers each salesperson visits each day.
+
+    Usage:
+        result = scheduler.create_schedules(...)
+        print_daily_visit_plan(result)
+    """
+    plan = result.daily_visit_plan
+    if plan.empty:
+        print("No visits scheduled.")
+        return
+
+    for sid in sorted(plan["sales_id"].unique()):
+        sp_plan = plan[plan["sales_id"] == sid]
+        print(f"\n{'='*60}")
+        print(f"Salesperson: {sid}")
+        print(f"{'='*60}")
+
+        for _, row in sp_plan.iterrows():
+            date_str = row["schedule_date"]
+            customers = row["customers"]
+            truck     = row["truck_group"]
+            print(f"\n  {date_str}  [{truck}]  ({len(customers)} customers)")
+            print(f"  {'-'*44}")
+            for c in customers:
+                print(f"    {c['route_rank']:>2}. {c['customer_id']}  "
+                      f"{c['shop_name']}  [{c['rfm_segment']}]")
+
+
+def get_daily_visit_dict(result) -> dict[str, dict[str, list[str]]]:
+    """
+    Returns a nested dict:  { sales_id: { date_str: [customer_id, ...] } }
+    Customer IDs are in route order.
+
+    Usage:
+        plan = get_daily_visit_dict(result)
+        for sid, dates in plan.items():
+            for date, cids in dates.items():
+                print(sid, date, cids)
+    """
+    plan = result.daily_visit_plan
+    if plan.empty:
+        return {}
+
+    out: dict[str, dict[str, list[str]]] = {}
+    for _, row in plan.iterrows():
+        sid  = row["sales_id"]
+        d    = row["schedule_date"]
+        cids = [c["customer_id"] for c in row["customers"]]
+        out.setdefault(sid, {})[d] = cids
+    return out
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1460,8 +1578,9 @@ def export_under_visited_excel(
         print("No schedule data to export.")
         return filepath
 
-    _CAPS = {"High": 30, "Medium": 15, "Low": 10}
-
+    # _CAPS = {"High": 30, "Medium": 15, "Low": 10}
+    _CAPS = {"High": 4, "Medium": 2, "Low": 1}
+    
     # ── Build per-customer base table ────────────────────────────────────────
     visit_counts = (
         combined.groupby("customer_id")
@@ -2021,137 +2140,93 @@ def build_stop_to_stop_distance_table(
     return pd.DataFrame(rows)
 
 
-def build_stop_to_stop_map(
+
+def export_stop_to_stop_monthly_excel(
     result,
-    territory_id:  str,
-    schedule_date,
-    sales_id:      str,
-    zoom_start:    int = 13,
+    territory_id: str,
+    year_month: str = None,          # format "YYYY-MM", default current month
+    filepath: str = "stop_to_stop_monthly.xlsx",
 ):
     """
-    Folium map with stop-to-stop legs labelled with distance (km).
-    Warehouse is the start; each polyline leg shows km at its midpoint.
+    Create an Excel workbook with one sheet per salesperson containing
+    all daily legs for the entire month, plus a monthly summary sheet.
     """
-    try:
-        import folium
-    except ImportError:
-        raise ImportError("pip install folium")
-
-    dist_df    = build_stop_to_stop_distance_table(result, territory_id, schedule_date, sales_id)
-    sched_date = pd.Timestamp(schedule_date).normalize()
-    if dist_df.empty:
-        raise ValueError(f"No route for {sales_id} in {territory_id} on {schedule_date}")
-
-    all_lats = dist_df["from_lat"].tolist() + [dist_df["to_lat"].iloc[-1]]
-    all_lngs = dist_df["from_lng"].tolist() + [dist_df["to_lng"].iloc[-1]]
-    m = folium.Map(location=[sum(all_lats)/len(all_lats), sum(all_lngs)/len(all_lngs)],
-                   zoom_start=zoom_start)
-
-    # Draw each leg + distance label at midpoint
-    for _, leg in dist_df.iterrows():
-        coords = [[leg["from_lat"], leg["from_lng"]], [leg["to_lat"], leg["to_lng"]]]
-        folium.PolyLine(coords, weight=3, color="navy", opacity=0.85).add_to(m)
-        mid_lat = (leg["from_lat"] + leg["to_lat"]) / 2
-        mid_lng = (leg["from_lng"] + leg["to_lng"]) / 2
-        folium.Marker(
-            [mid_lat, mid_lng],
-            icon=folium.DivIcon(
-                html=(
-                    '<div style="background:rgba(255,255,255,0.88);padding:1px 5px;'
-                    'border-radius:3px;font-size:10px;color:#003;white-space:nowrap;">'
-                    + f'{leg["leg_km"]:.2f} km</div>'
-                ),
-                icon_size=(70, 18), icon_anchor=(35, 9),
-            ),
-            tooltip=f'Leg {int(leg["stop_from"])}\u2192{int(leg["stop_to"])}: {leg["leg_km"]:.2f} km ({leg["leg_min"]:.0f} min)',
-        ).add_to(m)
-
-    # Stop markers
-    wh_lat, wh_lng = result.territory_warehouses.get(territory_id, (0.0, 0.0))
-    _add_warehouse_marker(m, wh_lat, wh_lng)
-
-    det    = result.detailed_schedule
-    day_df = det[
-        (det["territory_id"]  == territory_id) &
-        (det["schedule_date"] == sched_date) &
-        (det["sales_id"]      == sales_id)
-    ].copy()
-    if "route_rank" in day_df.columns:
-        day_df = day_df.sort_values("route_rank")
-
-    for _, row in day_df.iterrows():
-        color = SEGMENT_COLOUR.get(str(row.get("rfm_segment_final", "")), "blue")
-        folium.Marker(
-            [row["gps_lat"], row["gps_lng"]],
-            icon=folium.DivIcon(
-                html=(
-                    f'<div style="background:{color};color:white;border-radius:50%;'
-                    f'width:26px;height:26px;text-align:center;line-height:26px;'
-                    f'font-weight:bold;font-size:11px;">{row.get("route_rank","")}</div>'
-                ),
-            ),
-            tooltip=(
-                f'{row.get("route_rank","")}. {row.get("shop_name","")} '
-                f'[{row.get("rfm_segment_final","")}] '
-                f'leg={row.get("route_leg_km", 0):.2f} km'
-            ),
-        ).add_to(m)
-
-    total_km = dist_df["leg_km"].sum()
-    m.get_root().html.add_child(folium.Element(
-        f'<div style="position:fixed;top:10px;left:60px;z-index:1000;'
-        f'background:white;padding:8px 12px;border-radius:6px;'
-        f'border:1px solid #ccc;font-family:sans-serif;">'
-        f'<b>{sales_id}</b> \u2014 {sched_date.strftime("%d %b %Y")}'
-        f'&nbsp;|&nbsp;{len(dist_df)} legs&nbsp;|&nbsp;Total: {total_km:.2f} km'
-        f'</div>'
-    ))
-    return m
-
-
-def export_stop_to_stop_excel(
-    result,
-    territory_id:  str,
-    schedule_date,
-    filepath:      str = "stop_to_stop_distances.xlsx",
-):
-    """
-    Excel workbook — one sheet per salesperson, one row per route leg.
-    Columns: stop_from | stop_to | from_shop | to_shop | leg_km | leg_min
-    Sheet 'Summary' gives total km per salesperson.
-    """
+    
+    import pandas as pd
+    from datetime import datetime
+    from calendar import monthrange
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
+    
     try:
         from openpyxl import Workbook
-        from openpyxl.styles import Font, PatternFill, Alignment
-        from openpyxl.utils import get_column_letter
     except ImportError:
         raise ImportError("pip install openpyxl")
 
-    sched_date = pd.Timestamp(schedule_date).normalize()
-    det = result.detailed_schedule
-    sp_list = sorted(
-        det[(det["territory_id"]  == territory_id) &
-            (det["schedule_date"] == sched_date)]["sales_id"].unique()
-    )
-    if not sp_list:
-        raise ValueError(f"No schedule for {territory_id} on {sched_date.date()}")
+    # Parse year and month
+    if year_month is None:
+        today = datetime.today()
+        year, month = today.year, today.month
+    else:
+        try:
+            year, month = map(int, year_month.split('-'))
+        except:
+            raise ValueError("year_month must be 'YYYY-MM'")
 
-    HDR_FILL   = PatternFill("solid", fgColor="1F4E79")
-    HDR_FONT   = Font(color="FFFFFF", bold=True)
-    ALT_FILL   = PatternFill("solid", fgColor="D6E4F0")
+    first_day = pd.Timestamp(f"{year}-{month:02d}-01")
+    last_day = first_day + pd.offsets.MonthEnd(1)
+    all_dates = pd.date_range(first_day, last_day, freq='D')
+
+    # Collect all legs for all days
+    all_legs = []
+    schedule_dates = []
+
+    for date in all_dates:
+        # Check if any schedule exists on this date
+        det = result.detailed_schedule
+        mask = (det["territory_id"] == territory_id) & (det["schedule_date"] == date)
+        if not mask.any():
+            continue
+        schedule_dates.append(date)
+
+        # Get unique salespersons for this day
+        sales_list = det[mask]["sales_id"].unique()
+        for sid in sales_list:
+            try:
+                dist_df = build_stop_to_stop_distance_table(result, territory_id, date, sid)
+                if dist_df.empty:
+                    continue
+                dist_df["date"] = date
+                dist_df["sales_id"] = sid
+                all_legs.append(dist_df)
+            except Exception as e:
+                print(f"⚠️ Skipping {sid} on {date.date()}: {e}")
+
+    if not all_legs:
+        raise ValueError(f"No route data found for {territory_id} in {year}-{month:02d}")
+
+    combined = pd.concat(all_legs, ignore_index=True)
+
+    # Styles
+    HDR_FILL = PatternFill("solid", fgColor="1F4E79")
+    HDR_FONT = Font(color="FFFFFF", bold=True)
+    ALT_FILL = PatternFill("solid", fgColor="D6E4F0")
     TOTAL_FONT = Font(bold=True)
 
     wb = Workbook()
     wb.remove(wb.active)
-    summary_rows = []
 
-    for sid in sp_list:
-        dist_df = build_stop_to_stop_distance_table(result, territory_id, sched_date, sid)
-        if dist_df.empty:
+    # One sheet per salesperson
+    for sid in combined["sales_id"].unique():
+        df_sid = combined[combined["sales_id"] == sid].copy()
+        if df_sid.empty:
             continue
 
-        ws = wb.create_sheet(title=sid[-12:])
-        headers = ["From Stop", "To Stop", "From ID", "From Shop",
+        ws = wb.create_sheet(title=sid[-12:])  # truncate long IDs
+
+        # Headers (added 'Date' column)
+        headers = ["Date", "From Stop", "To Stop", "From ID", "From Shop",
                    "From Lat", "From Lng", "To ID", "To Shop",
                    "To Lat", "To Lng", "Leg km", "Leg min"]
         for ci, h in enumerate(headers, 1):
@@ -2160,54 +2235,71 @@ def export_stop_to_stop_excel(
             cell.fill = HDR_FILL
             cell.alignment = Alignment(horizontal="center")
 
-        for ri, row in dist_df.iterrows():
-            er   = ri + 2
-            fill = ALT_FILL if ri % 2 == 0 else None
-            vals = [int(row["stop_from"]), int(row["stop_to"]),
-                    row["from_id"], row["from_shop"],
-                    row["from_lat"], row["from_lng"],
-                    row["to_id"],   row["to_shop"],
-                    row["to_lat"],  row["to_lng"],
-                    round(float(row["leg_km"]), 3),
-                    round(float(row["leg_min"]), 1)]
+        row_num = 2
+        for _, row in df_sid.iterrows():
+            fill = ALT_FILL if (row_num - 2) % 2 == 0 else None
+            vals = [
+                row["date"].strftime("%d-%b"),
+                int(row["stop_from"]), int(row["stop_to"]),
+                row["from_id"], row["from_shop"],
+                row["from_lat"], row["from_lng"],
+                row["to_id"], row["to_shop"],
+                row["to_lat"], row["to_lng"],
+                round(float(row["leg_km"]), 3),
+                round(float(row["leg_min"]), 1)
+            ]
             for ci, val in enumerate(vals, 1):
-                cell = ws.cell(row=er, column=ci, value=val)
+                cell = ws.cell(row=row_num, column=ci, value=val)
                 if fill:
                     cell.fill = fill
+            row_num += 1
 
-        tr = len(dist_df) + 2
-        for ci, val in [(10, "TOTAL"),
-                        (11, round(float(dist_df["leg_km"].sum()), 3)),
-                        (12, round(float(dist_df["leg_min"].sum()), 1))]:
-            ws.cell(row=tr, column=ci, value=val).font = TOTAL_FONT
+        # Totals row (whole month for this salesperson)
+        total_km = df_sid["leg_km"].sum()
+        total_min = df_sid["leg_min"].sum()
+        ws.cell(row=row_num, column=11, value="MONTH TOTAL").font = TOTAL_FONT
+        ws.cell(row=row_num, column=12, value=round(total_km, 3)).font = TOTAL_FONT
+        ws.cell(row=row_num, column=13, value=round(total_min, 1)).font = TOTAL_FONT
 
-        col_widths = [10, 8, 16, 30, 10, 10, 16, 30, 10, 10, 10, 10]
-        for ci, w in enumerate(col_widths, 1):
+        # Column widths
+        widths = [12, 8, 8, 16, 30, 10, 10, 16, 30, 10, 10, 10, 10]
+        for ci, w in enumerate(widths, 1):
             ws.column_dimensions[get_column_letter(ci)].width = w
 
-        summary_rows.append({
-            "sales_id":  sid,
-            "n_stops":   len(dist_df),
-            "total_km":  round(float(dist_df["leg_km"].sum()), 3),
-            "total_min": round(float(dist_df["leg_min"].sum()), 1),
-        })
+    # --- Summary sheet (per salesperson, per day, grand totals) ---
+    summary = combined.groupby(["sales_id", "date"])[["leg_km", "leg_min"]].sum().reset_index()
+    grand = combined.groupby("sales_id")[["leg_km", "leg_min"]].sum().reset_index()
 
-    # Summary sheet
-    ws_s = wb.create_sheet(title="Summary", index=0)
-    for ci, h in enumerate(["Salesperson", "Stops", "Total km", "Total min"], 1):
-        c = ws_s.cell(row=1, column=ci, value=h)
+    ws_sum = wb.create_sheet(title="Monthly Summary", index=0)
+    # Header
+    sum_headers = ["Salesperson", "Date", "Daily km", "Daily min"]
+    for ci, h in enumerate(sum_headers, 1):
+        c = ws_sum.cell(row=1, column=ci, value=h)
         c.font = HDR_FONT; c.fill = HDR_FILL
         c.alignment = Alignment(horizontal="center")
-    for ri, row in enumerate(summary_rows, 2):
-        ws_s.cell(row=ri, column=1, value=row["sales_id"])
-        ws_s.cell(row=ri, column=2, value=row["n_stops"])
-        ws_s.cell(row=ri, column=3, value=row["total_km"])
-        ws_s.cell(row=ri, column=4, value=row["total_min"])
-    for ci, w in enumerate([22, 10, 12, 12], 1):
-        ws_s.column_dimensions[get_column_letter(ci)].width = w
-    ws_s.cell(row=1, column=6,
-              value=f"{territory_id}  |  {sched_date.strftime('%d %b %Y')}").font = Font(bold=True)
+
+    row_idx = 2
+    for _, row in summary.iterrows():
+        ws_sum.cell(row=row_idx, column=1, value=row["sales_id"])
+        ws_sum.cell(row=row_idx, column=2, value=row["date"].strftime("%d-%b"))
+        ws_sum.cell(row=row_idx, column=3, value=round(row["leg_km"], 3))
+        ws_sum.cell(row=row_idx, column=4, value=round(row["leg_min"], 1))
+        row_idx += 1
+
+    # Grand total rows
+    row_idx += 1
+    ws_sum.cell(row=row_idx, column=1, value="GRAND TOTAL (salesperson)").font = TOTAL_FONT
+    for _, row in grand.iterrows():
+        row_idx += 1
+        ws_sum.cell(row=row_idx, column=1, value=row["sales_id"])
+        ws_sum.cell(row=row_idx, column=3, value=round(row["leg_km"], 3))
+        ws_sum.cell(row=row_idx, column=4, value=round(row["leg_min"], 1))
+
+    ws_sum.column_dimensions["A"].width = 22
+    ws_sum.column_dimensions["B"].width = 12
+    ws_sum.column_dimensions["C"].width = 12
+    ws_sum.column_dimensions["D"].width = 12
 
     wb.save(filepath)
-    print(f"Saved stop-to-stop Excel \u2192 {filepath}  ({len(summary_rows)} salesperson sheet(s))")
+    print(f"✅ Monthly report saved → {filepath}  ({len(combined['sales_id'].unique())} salespersons, {len(schedule_dates)} days)")
     return filepath
