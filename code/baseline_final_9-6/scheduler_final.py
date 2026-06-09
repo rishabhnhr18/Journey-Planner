@@ -63,7 +63,9 @@ MIN_VISIT = 1
 DEFAULT_DAILY_WORK_MINUTES = 480
 DEFAULT_AVG_VISIT_MINUTES  = 22
 DEFAULT_AVG_SPEED_KMPH     = 32
-DEFAULT_SOLVER_TIME = 600
+DEFAULT_SOLVER_TIME = 1200
+MIN_SOLVER_TIME = 600
+MAX_SOLVER_TIME = 1200
 
 #Helper functions
 
@@ -337,6 +339,9 @@ class MultiSalesManScheduler:
 
         generate_plan_for_territory = territory_df[territory_df["territory_id"] == territory_id] if territory_id else territory_df 
 
+        all_detailed: list[pd.DataFrame] = []
+        sp_results:     dict[str, SalespersonScheduleResult] = {}
+
         for _, territory_row in generate_plan_for_territory.iterrows():
             # Extracting out the territory ID, customers and the salesman
             terr_id = territory_row["territory_id"]
@@ -379,7 +384,6 @@ class MultiSalesManScheduler:
             cold_customers = terr_customers[terr_customers["cold_truck_required"]== True].copy()
             normal_cusomters = terr_customers[terr_customers["cold_truck_required"]== False].copy()
 
-            all_detailed: list[pd.DataFrame] = []
             for group_name, group_customers in [("cold", cold_customers), ("normal", normal_cusomters)]:
                 if group_customers.empty:
                     print(f" Territory {terr_id} has  NO {group_name} customers")
@@ -438,7 +442,7 @@ class MultiSalesManScheduler:
                     avg_speed = self.avg_speed,
                     customer_serving_time = self.customer_serving_time,
                     salesman_daily_work_minutes = self.salesman_daily_work_minutes,                    
-                    solver_time = 600 if group_name == 'cold' else 1200
+                    solver_time = MIN_SOLVER_TIME if group_name == 'cold' else MAX_SOLVER_TIME
                 )
                 
                 if datailed_schedule.empty:
@@ -468,13 +472,12 @@ class MultiSalesManScheduler:
                 all_detailed.append(detailed)
 
                 # Store per-salesperson results
-                sp_results:     dict[str, SalespersonScheduleResult] = {}
                 for salesman_id in detailed["sales_id"].unique():
                     sp_det = detailed[detailed["sales_id"] == salesman_id].copy()
                     sp_cust= group_customers[group_customers["customer_id"].isin(
                         sp_det["customer_id"].unique()
                     )].copy()
-                    daily  = self._build_daily_summary(sp_det, terr_warehouse_lat, terr_warehouse_lng, terr_salesman_id)
+                    daily  = self._build_daily_summary(sp_det, terr_warehouse_lat, terr_warehouse_lng, salesman_id)
 
                     key = f"{salesman_id}_{group_name}"   # unique key per SP × truck group
                     sp_results[key] = SalespersonScheduleResult(
@@ -705,7 +708,6 @@ class MultiSalesManScheduler:
                     (detailed["sales_id"] == sid) &
                     (detailed["schedule_date"] == d)
                 ]
-
                 if day_df.empty:
                     # Solver gave this SP no visits today — start fresh from warehouse
                     remaining    = float(daily_work_minutes)
@@ -717,7 +719,7 @@ class MultiSalesManScheduler:
                     travel_min  = (route_km / avg_speed_kmph) * 60
                     service_min = len(day_df) * avg_visit_minutes
                     remaining   = daily_work_minutes - (travel_min + service_min)
-
+                    
                     print(f"remaining time for {sid} is {remaining}")
                     print(f"Service min for {sid}: {service_min}")
                     print(f"Travel min for {sid}: {travel_min}")
@@ -731,7 +733,7 @@ class MultiSalesManScheduler:
                     already_today = set(day_df["customer_id"].tolist())
 
                 if remaining < avg_visit_minutes + 2:
-                    continue  # not enough for even one more visit
+                    continue
 
                 for cid in candidates:
                     if cid in already_today:
@@ -1042,13 +1044,6 @@ class TerritoryScheduler:
                             visit_of_customer_by_salesman_on_that_day[(customer_id, salesman_id, date)] <=
                             assigned_salesman_to_customer[(customer_id, salesman_id)]
                         )
-
-            # Each customer assigned to exactly one salesperson
-            for customer_id in customer_ids:
-                model.add(
-                    sum(assigned_salesman_to_customer[(customer_id, salesman_id)]
-                        for salesman_id in salesman_ids) == 1
-                )
             
             if truck_category.lower() == 'cold':
                 cold_salesman_ids = [salesman_id for salesman_id in salesman_ids if salesman_with_cold_truck.get(salesman_id, False)]
@@ -1114,7 +1109,6 @@ class TerritoryScheduler:
             # Soft constraints (Objective)
             objective_terms = []
             _TIER_WEIGHTS = {"High": 1_000_000_000, "Medium": 10_000_000, "Low": 100_000}
-            PREFERRED_DAY_BONUS = 500
             
             for customer_id in customer_ids:
                 customer_info = customer_lookup_dict[customer_id]
@@ -1124,8 +1118,11 @@ class TerritoryScheduler:
                 customer_weight = customer_tier + score_bonus
                 preferred_day = customer_info.get("preferred_visit_day", "")
                 
+                # Proportional preferred day bonus (10% of customer weight) to strongly outweigh compactness bonus (2000)
+                preferred_day_bonus = int(customer_weight * 0.1)
+                
                 for date in valid_dates:
-                    preference_weight = PREFERRED_DAY_BONUS if _DAY_NAME.get(date.weekday()) == preferred_day else 0
+                    preference_weight = preferred_day_bonus if _DAY_NAME.get(date.weekday()) == preferred_day else 0
                     for salesman_id in salesman_ids:
                         objective_terms.append(
                             (customer_weight + preference_weight) *
@@ -1277,13 +1274,20 @@ class TerritoryScheduler:
             )
             
             if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-                print(f"  [{territory_id}/{truck_category}] Solver INFEASIBLE or FAILED with min-1-visit constraint. Retrying in fallback mode...")
+                print(f"  [{territory_id}/{truck_category}] Solver INFEASIBLE or FAILED with normal caps. Retrying with min-1-visit and default caps {DEFAULT_SEG_CAPS}...")
                 fallback_used = True
                 caps_to_use = DEFAULT_SEG_CAPS
                 status, solver, visit_of_customer_by_salesman_on_that_day, assigned_salesman_to_customer, customer_visit_as_per_segment = _attempt_solve(
                     enforce_min_visit=True,
                     caps_to_use=DEFAULT_SEG_CAPS
                 )
+                
+                if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+                    print(f"  [{territory_id}/{truck_category}] Solver STILL INFEASIBLE. Retrying without min-1-visit and default caps as a last resort...")
+                    status, solver, visit_of_customer_by_salesman_on_that_day, assigned_salesman_to_customer, customer_visit_as_per_segment = _attempt_solve(
+                        enforce_min_visit=False,
+                        caps_to_use=DEFAULT_SEG_CAPS
+                    )
         else:
             print(f"  [{territory_id}/{truck_category}] min-1-visit constraint cannot be met ({len(customer_ids)} customers > {total_slots_available} slots). Solving in fallback mode directly...")
             fallback_used = True
@@ -1333,12 +1337,9 @@ class TerritoryScheduler:
 
         print(f"✅ {territory_id} - {truck_category} {solver.StatusName(status)}")
         
-        # Extract the solution — scan all (salesman, date) visit variables directly.
-        # Do NOT rely on assigned_salesman_to_customer: the compactness bonus gives the
-        # solver incentive to set assigned=1 for a salesman who never actually visits,
-        # which causes next() to return the wrong salesman and silently drop rows.
+        # Extract the solution
         rows: List[Dict[str, Any]] = []
-
+        
         for customer_id in customer_ids:
             info = customer_lookup_dict[customer_id]
             for salesman_id in salesman_ids:
@@ -1349,7 +1350,7 @@ class TerritoryScheduler:
                             terr_warehouse_lng,
                             float(info.get('gps_lat')),
                             float(info.get('gps_lng')),
-                            )
+                        )
                         rows.append({
                             "schedule_date":            date,
                             "sales_id":                 salesman_id,
@@ -1442,7 +1443,7 @@ class DailyRoutePlanner:
 
         # Setup node coordinates mapping: node 0 = warehouse, node 1..N = customers
         def _get_node_coords(node_idx: int) -> tuple[float, float]:
-            if node_idx == 0:
+            if node_idx <= 0 or node_idx > n_cust:
                 return (start_lat, start_lng)
             row_c = df_c.loc[node_idx - 1]
             return (float(row_c["gps_lat"]), float(row_c["gps_lng"]))
@@ -1454,14 +1455,18 @@ class DailyRoutePlanner:
 
         # Distance callback: distance from any node to node 0 (warehouse) is 0 to enforce one-way
         def distance_callback(from_index, to_index):
-            from_node = manager.IndexToNode(from_index)
-            to_node = manager.IndexToNode(to_index)
-            if to_node == 0:
-                return 0
-            lat_i, lng_i = _get_node_coords(from_node)
-            lat_j, lng_j = _get_node_coords(to_node)
-            # multiply by 1000 to get meters for integer precision
-            return int(_haversine_km(lat_i, lng_i, lat_j, lng_j) * 1000)
+            try:
+                from_node = manager.IndexToNode(from_index)
+                to_node = manager.IndexToNode(to_index)
+                if to_node <= 0 or to_node > n_cust:
+                    return 0
+                lat_i, lng_i = _get_node_coords(from_node)
+                lat_j, lng_j = _get_node_coords(to_node)
+                # multiply by 1000 to get meters for integer precision
+                return int(_haversine_km(lat_i, lng_i, lat_j, lng_j) * 1000)
+            except Exception as e:
+                print(f"  [Warning] Exception in distance callback for index ({from_index} -> {to_index}): {e}")
+                return 999999
 
         transit_callback_index = routing.RegisterTransitCallback(distance_callback)
         routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
@@ -1471,16 +1476,39 @@ class DailyRoutePlanner:
         search_parameters.first_solution_strategy = (
             routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
         )
+
+
+        """
+            Commented out the Guided Local Path
+        """
+        
+        '''
         search_parameters.local_search_metaheuristic = (
             routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
         )
-        search_parameters.time_limit.seconds = 1  # solve very fast since it's small (TSP)
+        search_parameters.time_limit.seconds = 1  # solve very
+        '''
+
+        # Note: We do NOT set local_search_metaheuristic to GUIDED_LOCAL_SEARCH.
+        # Leaving it default (UNSET) allows the solver to run standard local search
+        # and terminate immediately once it reaches a local minimum (usually in milliseconds),
+        # instead of wasting the entire time limit trying to escape local minima.
+        # This keeps the overall schedule generation execution time extremely fast.
+        search_parameters.time_limit.seconds = 2  # Safety guard, terminates early in milliseconds
 
         solution = routing.SolveWithParameters(search_parameters)
 
         if not solution:
             # Fallback to simple nearest neighbour if routing solver fails
-            print("  ⚠️  Routing solver failed to find solution. Falling back to Nearest Neighbour.")
+            status_code = routing.status()
+            status_name = {
+                0: "ROUTING_NOT_SOLVED",
+                1: "ROUTING_SUCCESS",
+                2: "ROUTING_FAIL",
+                3: "ROUTING_FAIL_TIMEOUT",
+                4: "ROUTING_INVALID"
+            }.get(status_code, f"UNKNOWN ({status_code})")
+            print(f"  ⚠️  Routing solver failed to find solution (Status: {status_name}). Falling back to Nearest Neighbour.")
             return self._nn_fallback(day_schedule, start_lat, start_lng)
 
         # Reconstruct route from solution

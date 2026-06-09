@@ -63,9 +63,9 @@ MIN_VISIT = 1
 DEFAULT_DAILY_WORK_MINUTES = 480
 DEFAULT_AVG_VISIT_MINUTES  = 22
 DEFAULT_AVG_SPEED_KMPH     = 32
-DEFAULT_SOLVER_TIME = 600
-MIN_SOLVER_TIME = 300
-MAX_SOLVER_TIME = 600
+DEFAULT_SOLVER_TIME = 1200
+MIN_SOLVER_TIME = 600
+MAX_SOLVER_TIME = 1200
 
 #Helper functions
 
@@ -339,6 +339,9 @@ class MultiSalesManScheduler:
 
         generate_plan_for_territory = territory_df[territory_df["territory_id"] == territory_id] if territory_id else territory_df 
 
+        all_detailed: list[pd.DataFrame] = []
+        sp_results:     dict[str, SalespersonScheduleResult] = {}
+
         for _, territory_row in generate_plan_for_territory.iterrows():
             # Extracting out the territory ID, customers and the salesman
             terr_id = territory_row["territory_id"]
@@ -381,8 +384,6 @@ class MultiSalesManScheduler:
             cold_customers = terr_customers[terr_customers["cold_truck_required"]== True].copy()
             normal_cusomters = terr_customers[terr_customers["cold_truck_required"]== False].copy()
 
-            all_detailed: list[pd.DataFrame] = []
-            sp_results:     dict[str, SalespersonScheduleResult] = {}
             for group_name, group_customers in [("cold", cold_customers), ("normal", normal_cusomters)]:
                 if group_customers.empty:
                     print(f" Territory {terr_id} has  NO {group_name} customers")
@@ -1233,7 +1234,7 @@ class TerritoryScheduler:
             solver = cp_model.CpSolver()
             t_limit = solver_time if solver_time is not None else DEFAULT_SOLVER_TIME
             solver.parameters.max_time_in_seconds = t_limit
-            solver.parameters.num_search_workers  = max(4, min(os.cpu_count() or 4, 16))
+            solver.parameters.num_search_workers  = max(8, min(os.cpu_count() or 4, 16))
             solver.parameters.log_search_progress = True
             solver.parameters.log_to_stdout = False
             solver.parameters.relative_gap_limit  = 1e-4
@@ -1475,10 +1476,25 @@ class DailyRoutePlanner:
         search_parameters.first_solution_strategy = (
             routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
         )
+
+
+        """
+            Commented out the Guided Local Path
+        """
+        
+        '''
         search_parameters.local_search_metaheuristic = (
             routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
         )
-        search_parameters.time_limit.seconds = 1  # solve very fast since it's small (TSP)
+        search_parameters.time_limit.seconds = 1  # solve very
+        '''
+
+        # Note: We do NOT set local_search_metaheuristic to GUIDED_LOCAL_SEARCH.
+        # Leaving it default (UNSET) allows the solver to run standard local search
+        # and terminate immediately once it reaches a local minimum (usually in milliseconds),
+        # instead of wasting the entire time limit trying to escape local minima.
+        # This keeps the overall schedule generation execution time extremely fast.
+        search_parameters.time_limit.seconds = 2  # Safety guard, terminates early in milliseconds
 
         solution = routing.SolveWithParameters(search_parameters)
 
