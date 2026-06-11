@@ -7,6 +7,4 @@ streamlit-folium>=0.20.0
 faker>=20.0.0
 ortools>=9.8.3296
 openpyxl>=3.1.5
-matplotlib==3.10.3
-osrm-bindings==0.3.0
-uvicorn==0.34.3
+osrm-bindings>=0.3.0
