@@ -1,0 +1,161 @@
+{
+  "row_counts": {
+    "territory": 3,
+    "salesperson": 15,
+    "van": 15,
+    "customer": 300,
+    "holiday": 119,
+    "config": 10,
+    "rfm_scores": 300
+  },
+  "customer_tiers_by_territory": {
+    "TER_DMM": {
+      "HIGH": 20,
+      "LOW": 50,
+      "MED": 30
+    },
+    "TER_JED": {
+      "HIGH": 20,
+      "LOW": 50,
+      "MED": 30
+    },
+    "TER_RUH": {
+      "HIGH": 20,
+      "LOW": 50,
+      "MED": 30
+    }
+  },
+  "cold_truck_share_by_territory": {
+    "TER_DMM": 0.21,
+    "TER_JED": 0.19,
+    "TER_RUH": 0.22
+  },
+  "rfm_segments_overall": {
+    "Medium": 120,
+    "High": 93,
+    "Low": 87
+  },
+  "rfm_segments_by_territory_and_truck_group": [
+    {
+      "territory_id": "TER_DMM",
+      "cold_truck_group": "Cold Truck",
+      "rfm_segment_final": "High",
+      "count": 7
+    },
+    {
+      "territory_id": "TER_DMM",
+      "cold_truck_group": "Cold Truck",
+      "rfm_segment_final": "Low",
+      "count": 6
+    },
+    {
+      "territory_id": "TER_DMM",
+      "cold_truck_group": "Cold Truck",
+      "rfm_segment_final": "Medium",
+      "count": 8
+    },
+    {
+      "territory_id": "TER_DMM",
+      "cold_truck_group": "Normal Truck",
+      "rfm_segment_final": "High",
+      "count": 24
+    },
+    {
+      "territory_id": "TER_DMM",
+      "cold_truck_group": "Normal Truck",
+      "rfm_segment_final": "Low",
+      "count": 23
+    },
+    {
+      "territory_id": "TER_DMM",
+      "cold_truck_group": "Normal Truck",
+      "rfm_segment_final": "Medium",
+      "count": 32
+    },
+    {
+      "territory_id": "TER_JED",
+      "cold_truck_group": "Cold Truck",
+      "rfm_segment_final": "High",
+      "count": 6
+    },
+    {
+      "territory_id": "TER_JED",
+      "cold_truck_group": "Cold Truck",
+      "rfm_segment_final": "Low",
+      "count": 5
+    },
+    {
+      "territory_id": "TER_JED",
+      "cold_truck_group": "Cold Truck",
+      "rfm_segment_final": "Medium",
+      "count": 8
+    },
+    {
+      "territory_id": "TER_JED",
+      "cold_truck_group": "Normal Truck",
+      "rfm_segment_final": "High",
+      "count": 25
+    },
+    {
+      "territory_id": "TER_JED",
+      "cold_truck_group": "Normal Truck",
+      "rfm_segment_final": "Low",
+      "count": 24
+    },
+    {
+      "territory_id": "TER_JED",
+      "cold_truck_group": "Normal Truck",
+      "rfm_segment_final": "Medium",
+      "count": 32
+    },
+    {
+      "territory_id": "TER_RUH",
+      "cold_truck_group": "Cold Truck",
+      "rfm_segment_final": "High",
+      "count": 7
+    },
+    {
+      "territory_id": "TER_RUH",
+      "cold_truck_group": "Cold Truck",
+      "rfm_segment_final": "Low",
+      "count": 6
+    },
+    {
+      "territory_id": "TER_RUH",
+      "cold_truck_group": "Cold Truck",
+      "rfm_segment_final": "Medium",
+      "count": 9
+    },
+    {
+      "territory_id": "TER_RUH",
+      "cold_truck_group": "Normal Truck",
+      "rfm_segment_final": "High",
+      "count": 24
+    },
+    {
+      "territory_id": "TER_RUH",
+      "cold_truck_group": "Normal Truck",
+      "rfm_segment_final": "Low",
+      "count": 23
+    },
+    {
+      "territory_id": "TER_RUH",
+      "cold_truck_group": "Normal Truck",
+      "rfm_segment_final": "Medium",
+      "count": 31
+    }
+  ],
+  "lifecycle_distribution": {
+    "Active": 0.683,
+    "New": 0.103,
+    "At Risk": 0.103,
+    "Dormant": 0.07,
+    "Churned": 0.04
+  },
+  "payment_type_distribution": {
+    "cash": 0.617,
+    "credit": 0.383
+  },
+  "validation_status": "passed",
+  "generated_at": "2026-05-29T18:57:41"
+}

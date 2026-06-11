@@ -1,0 +1,16 @@
+sales_id,name,territory_id,truck_type,working_hours_per_day,shift_start_time,assigned_van,active_status,performance_multiplier
+SAL_RUH_001,Arif Rahman,TER_RUH,cold,8.0,09:00,VAN_RUH_001,True,1.04
+SAL_RUH_002,Nasser Al-Dossari,TER_RUH,normal,8.0,09:00,VAN_RUH_002,True,0.99
+SAL_RUH_003,Abdullah Al-Qahtani,TER_RUH,normal,8.0,09:00,VAN_RUH_003,True,0.97
+SAL_RUH_004,Ahmed Al-Anazi,TER_RUH,normal,8.0,09:00,VAN_RUH_004,True,0.98
+SAL_RUH_005,Majed Al-Shammari,TER_RUH,normal,8.0,09:00,VAN_RUH_005,True,1.14
+SAL_JED_001,Imran Ahmed,TER_JED,cold,8.0,09:00,VAN_JED_001,True,0.98
+SAL_JED_002,Khalid Al-Ghamdi,TER_JED,normal,8.0,09:00,VAN_JED_002,True,0.97
+SAL_JED_003,Hassan Al-Yami,TER_JED,normal,8.0,09:00,VAN_JED_003,True,1.13
+SAL_JED_004,Fahad Al-Otaibi,TER_JED,normal,8.0,09:00,VAN_JED_004,True,0.88
+SAL_JED_005,Omar Al-Shehri,TER_JED,normal,8.0,09:00,VAN_JED_005,True,1.17
+SAL_DMM_001,Mansour Al-Qahtani,TER_DMM,cold,8.0,09:00,VAN_DMM_001,True,0.93
+SAL_DMM_002,Sameer Khan,TER_DMM,normal,8.0,09:00,VAN_DMM_002,True,1.01
+SAL_DMM_003,Ibrahim Al-Subaie,TER_DMM,normal,8.0,09:00,VAN_DMM_003,True,1.0
+SAL_DMM_004,Yousef Al-Mutairi,TER_DMM,normal,8.0,09:00,VAN_DMM_004,True,1.04
+SAL_DMM_005,Nadeem Ali,TER_DMM,normal,8.0,09:00,VAN_DMM_005,True,1.02

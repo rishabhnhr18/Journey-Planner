@@ -1,0 +1,10 @@
+sales_id,name,territory_id,working_hours_per_day,shift_start_time,assigned_van,active_status,performance_multiplier
+SAL_RUH_001,Arif Rahman,TER_RUH,8.0,09:00,VAN_RUH_001,True,1.04
+SAL_RUH_002,Nasser Al-Dossari,TER_RUH,8.0,09:00,VAN_RUH_002,True,0.99
+SAL_RUH_003,Abdullah Al-Qahtani,TER_RUH,8.0,09:00,VAN_RUH_003,True,0.97
+SAL_JED_001,Ahmed Al-Anazi,TER_JED,8.0,09:00,VAN_JED_001,True,0.98
+SAL_JED_002,Majed Al-Shammari,TER_JED,8.0,09:00,VAN_JED_002,True,1.14
+SAL_JED_003,Imran Ahmed,TER_JED,8.0,09:00,VAN_JED_003,True,0.98
+SAL_DMM_001,Khalid Al-Ghamdi,TER_DMM,8.0,09:00,VAN_DMM_001,True,0.97
+SAL_DMM_002,Hassan Al-Yami,TER_DMM,8.0,09:00,VAN_DMM_002,True,1.13
+SAL_DMM_003,Fahad Al-Otaibi,TER_DMM,8.0,09:00,VAN_DMM_003,True,0.88

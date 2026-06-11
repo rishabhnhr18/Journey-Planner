@@ -1,0 +1,11 @@
+config_key,config_value
+avg_speed_kmh,32
+avg_service_time_min,22
+buffer_pct,0.15
+rfm_window_days,90
+route_partial_prob,0.08
+route_cancel_prob,0.03
+traffic_jam_prob,0.12
+credit_outstanding_cap,0.85
+normal_shift_start_time,09:00
+ramadan_shift_start_time,10:00
