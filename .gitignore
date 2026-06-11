@@ -28,16 +28,3 @@ yarn-error.log*
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
-
-.venv
-frontend_unuse
-assests
-
-
-.pyc
-__pycache__
-.txt
-.zip
-
-
-solver_log.txt
