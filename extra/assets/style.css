@@ -1,0 +1,86 @@
+/* Modern dashboard theme */
+:root {
+    --primary: #4F7FFA;
+    --primary-light: #EEF3FF;
+    --success: #34C48B;
+    --warning: #F5A623;
+    --danger: #F06565;
+    --dark: #1E3A5F;
+    --gray: #6B8CAE;
+    --light-gray: #A8BDD4;
+    --bg: #F5F7FB;
+    --card-bg: white;
+    --border-radius: 16px;
+    --shadow: 0 8px 20px rgba(0,0,0,0.05);
+}
+
+/* Main container */
+.stApp {
+    background-color: var(--bg);
+}
+
+/* Sidebar */
+.css-1d391kg, .css-1lcbmhc {
+    background-color: white;
+    border-right: 1px solid #E8EDF5;
+}
+
+/* Stat cards (using st.columns + custom div) */
+.stat-card {
+    background: var(--card-bg);
+    border-radius: var(--border-radius);
+    padding: 1.2rem 1.5rem;
+    box-shadow: var(--shadow);
+    border: 1px solid #E8EDF5;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.stat-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 28px rgba(79,127,250,0.15);
+}
+.stat-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--gray);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.stat-value {
+    font-size: 2rem;
+    font-weight: 800;
+    color: var(--dark);
+    line-height: 1.2;
+}
+.stat-trend-up { color: var(--success); background: #34C48B18; padding: 2px 8px; border-radius: 20px; font-size: 0.7rem; font-weight: 700; }
+.stat-trend-down { color: var(--danger); background: #F0656518; padding: 2px 8px; border-radius: 20px; font-size: 0.7rem; font-weight: 700; }
+
+/* Custom table */
+.custom-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.custom-table th {
+    text-align: left;
+    padding: 12px 8px;
+    border-bottom: 1.5px solid #E8EDF5;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--light-gray);
+    text-transform: uppercase;
+}
+.custom-table td {
+    padding: 10px 8px;
+    border-bottom: 1px solid #E8EDF5;
+    font-size: 0.85rem;
+    color: var(--dark);
+}
+.badge {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-weight: 700;
+    font-size: 0.7rem;
+    display: inline-block;
+}
+.badge-high { background: #34C48B18; color: var(--success); }
+.badge-medium { background: #F5A62318; color: var(--warning); }
+.badge-low { background: #F0656518; color: var(--danger); }
