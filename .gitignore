@@ -33,22 +33,11 @@ next-env.d.ts
 frontend_unuse
 assests
 
-*.xlsx
-*.docx
-*.xls
 
 .pyc
 __pycache__
 .txt
 .zip
-.doc
-.docx
-.png
-.jpg
-.jpeg
-.zip/
+
 
 solver_log.txt
-greedy_output/
-jp_data_output/
-output/
