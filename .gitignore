@@ -47,6 +47,7 @@ __pycache__
 .png
 .jpg
 .jpeg
+.zip/
 
 solver_log.txt
 greedy_output/

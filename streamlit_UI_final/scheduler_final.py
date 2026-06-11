@@ -57,9 +57,7 @@ from ortools.sat.python import cp_model
 from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
 
-from osrm_helper import OSRMHelper, get_distance_matrix
-
-SEG_CAPS = {"High":15, "Medium": 6, "Low": 4}
+SEG_CAPS = {"High": 15, "Medium": 6, "Low": 4}
 DEFAULT_SEG_CAPS = {"High": 4, "Medium": 2, "Low": 1}
 MIN_VISIT = 1
 DEFAULT_DAILY_WORK_MINUTES = 480
@@ -287,16 +285,15 @@ class SalespersonScheduleResult:
 
 @dataclass
 class MultiScheduleResult:
-    detailed_schedule:    pd.DataFrame = field(default_factory=pd.DataFrame)   # all customers, all territories
-    cold_schedule:        pd.DataFrame = field(default_factory=pd.DataFrame)   # cold-truck customers only
-    normal_schedule:      pd.DataFrame = field(default_factory=pd.DataFrame)   # normal-truck customers only
-    daily_schedule:       pd.DataFrame = field(default_factory=pd.DataFrame)
-    unvisited_customers:     pd.DataFrame = field(default_factory=pd.DataFrame)   # customers who received 0 visits (capacity overflow)
-    under_visited_customers: pd.DataFrame = field(default_factory=pd.DataFrame)   # customers with >0 but < segment cap visits
-    daily_visit_plan:        pd.DataFrame = field(default_factory=pd.DataFrame)   # compact: sales_id | schedule_date | customer_visits (list of dicts)
+    detailed_schedule:    pd.DataFrame   # all customers, all territories
+    cold_schedule:        pd.DataFrame   # cold-truck customers only
+    normal_schedule:      pd.DataFrame   # normal-truck customers only
+    daily_schedule:       pd.DataFrame
+    unvisited_customers:     pd.DataFrame   # customers who received 0 visits (capacity overflow)
+    under_visited_customers: pd.DataFrame   # customers with >0 but < segment cap visits
+    daily_visit_plan:        pd.DataFrame   # compact: sales_id | schedule_date | customer_visits (list of dicts)
     salesperson_results:     dict[str, SalespersonScheduleResult] = field(default_factory=dict)
     territory_warehouses:    dict[str, tuple[float, float]]       = field(default_factory=dict)
-    osrm_helper:             Optional[Any] = None
 
 
 
@@ -312,14 +309,8 @@ class MultiSalesManScheduler:
         self.avg_speed = float(cfg.get('avg_speed', 32))
         self.customer_serving_time = int(cfg.get('customer_serving_time', 22))
         self.salesman_daily_work_minutes = int(cfg.get('salesman_daily_work_minutes', 480))
-        
-        osrm_mode = cfg.get('osrm_routing_mode', 'haversine')
-        osrm_url = cfg.get('osrm_server_url', 'http://router.project-osrm.org')
-        osrm_path = cfg.get('osrm_data_path', None)
-        self.osrm_helper = OSRMHelper(mode=osrm_mode, server_url=osrm_url, data_path=osrm_path)
-        
-        self._territory_scheduler = TerritoryScheduler(self.osrm_helper)
-        self._route_planner = DailyRoutePlanner(self.osrm_helper)
+        self._territory_scheduler = TerritoryScheduler()
+        self._route_planner = DailyRoutePlanner()
 
     def create_monthly_schedule(
         self,
@@ -331,6 +322,7 @@ class MultiSalesManScheduler:
         van_df:           pd.DataFrame,
         month_start_date: str | pd.Timestamp = "2026-07-01",
         territory_id:     Optional[str]      = None,   # None → all territories
+        require_min_visit: bool              = True,    # enforce min-1-visit per customer
     ) -> MultiScheduleResult:
         
         if (territory_df is None or territory_df.empty or
@@ -346,10 +338,11 @@ class MultiSalesManScheduler:
         customers_with_rfm = _build_full_customer_with_rfm_score_df(customer_df, rfm_scores_df)
         territory_info = territory_df.set_index("territory_id").to_dict('index')
 
-        generate_plan_for_territory = territory_df[territory_df["territory_id"] == territory_id] if territory_id else territory_df 
+        generate_plan_for_territory = territory_df[territory_df["territory_id"] == territory_id] if territory_id else territory_df
 
         all_detailed: list[pd.DataFrame] = []
-        sp_results:     dict[str, SalespersonScheduleResult] = {}
+        sp_results:   dict[str, SalespersonScheduleResult] = {}
+        ter_warehouses: dict[str, tuple[float, float]] = {}
 
         for _, territory_row in generate_plan_for_territory.iterrows():
             # Extracting out the territory ID, customers and the salesman
@@ -368,6 +361,7 @@ class MultiSalesManScheduler:
             #Extracting the territory's warehouse latitute and longitude
             terr_warehouse_lat = territory_info[terr_id]['warehouse_lat']
             terr_warehouse_lng = territory_info[terr_id]['warehouse_lng']
+            ter_warehouses[terr_id] = (terr_warehouse_lat, terr_warehouse_lng)
 
             #Territory blocked dates
             terr_blocked_dates = get_territory_blocked_dates(terr_id, holiday_df,month_start, month_end)
@@ -450,8 +444,9 @@ class MultiSalesManScheduler:
                     #config set
                     avg_speed = self.avg_speed,
                     customer_serving_time = self.customer_serving_time,
-                    salesman_daily_work_minutes = self.salesman_daily_work_minutes,                    
-                    solver_time = MIN_SOLVER_TIME if group_name == 'cold' else MAX_SOLVER_TIME
+                    salesman_daily_work_minutes = self.salesman_daily_work_minutes,
+                    solver_time = MIN_SOLVER_TIME if group_name == 'cold' else MAX_SOLVER_TIME,
+                    require_min_visit = require_min_visit
                 )
                 
                 if datailed_schedule.empty:
@@ -515,7 +510,6 @@ class MultiSalesManScheduler:
         cold_schedule   = combined[combined["truck_group"] == "cold"].reset_index(drop=True)
         normal_schedule = combined[combined["truck_group"] == "normal"].reset_index(drop=True)
         combined_daily  = self._build_combined_daily(sp_results)
-        ter_warehouses: dict[str, tuple[float, float]] = {}
 
         _CAPS = SEG_CAPS
 
@@ -591,7 +585,6 @@ class MultiSalesManScheduler:
 
         # ── Build compact daily visit plan ───────────────────────────────────
         daily_visit_plan = self._build_daily_visit_plan(combined)
-        ter_warehouses[terr_id] = (terr_warehouse_lat, terr_warehouse_lng)
         return MultiScheduleResult(
             detailed_schedule       = combined,
             cold_schedule           = cold_schedule,
@@ -602,7 +595,6 @@ class MultiSalesManScheduler:
             daily_visit_plan        = daily_visit_plan,
             salesperson_results     = sp_results,
             territory_warehouses    = ter_warehouses,
-            osrm_helper             = self.osrm_helper,
         )
 
     def _apply_route_ordering(self, datailed_schedule, terr_warehouse_lat, terr_warehouse_lng) -> pd.DataFrame:
@@ -646,18 +638,6 @@ class MultiSalesManScheduler:
             if detailed["fallback_used"].iloc[0]:
                 _CAPS = DEFAULT_SEG_CAPS
         cust_lookup = group_custs.set_index("customer_id").to_dict("index")
-
-        # Fetch OSRM distance and duration matrices for all candidate stops in the group (incl warehouse at index 0)
-        coords = [(wh_lat, wh_lng)]
-        cust_list = group_custs["customer_id"].tolist()
-        for cid in cust_list:
-            info = cust_lookup[cid]
-            coords.append((float(info["gps_lat"]), float(info["gps_lng"])))
-        dist_matrix, dur_matrix = get_distance_matrix(coords, self.osrm_helper, avg_speed_kmph)
-
-        # Map customer_id -> index in coords matrix
-        c_id_to_idx = {cid: idx + 1 for idx, cid in enumerate(cust_list)}
-        c_id_to_idx["warehouse"] = 0
 
         # Customer → assigned SP (from solver output)
         cust_sp = detailed.groupby("customer_id")["sales_id"].first().to_dict()
@@ -734,7 +714,6 @@ class MultiSalesManScheduler:
                     # Solver gave this SP no visits today — start fresh from warehouse
                     remaining    = float(daily_work_minutes)
                     cur_lat, cur_lng = wh_lat, wh_lng
-                    cur_id = "warehouse"
                     already_today: set[str] = set()
                 else:
                     # Compute current time usage from real routed distances
@@ -753,7 +732,6 @@ class MultiSalesManScheduler:
                     else:
                         last = day_df.iloc[-1]
                     cur_lat, cur_lng = float(last["gps_lat"]), float(last["gps_lng"])
-                    cur_id = last["customer_id"]
                     already_today = set(day_df["customer_id"].tolist())
 
                 if remaining < avg_visit_minutes + 2:
@@ -769,16 +747,8 @@ class MultiSalesManScheduler:
 
                     c_lat = float(cust_lookup[cid]["gps_lat"])
                     c_lng = float(cust_lookup[cid]["gps_lng"])
-                    
-                    idx_from = c_id_to_idx.get(cur_id)
-                    idx_to = c_id_to_idx.get(cid)
-                    if idx_from is not None and idx_to is not None:
-                        leg_km = dist_matrix[idx_from, idx_to]
-                        leg_travel_min = dur_matrix[idx_from, idx_to]
-                    else:
-                        leg_km         = _haversine_km(cur_lat, cur_lng, c_lat, c_lng)
-                        leg_travel_min = (leg_km / avg_speed_kmph) * 60
-                        
+                    leg_km         = _haversine_km(cur_lat, cur_lng, c_lat, c_lng)
+                    leg_travel_min = (leg_km / avg_speed_kmph) * 60
                     cost           = avg_visit_minutes + leg_travel_min
 
                     if cost > remaining:
@@ -786,11 +756,7 @@ class MultiSalesManScheduler:
 
                     # Insert this visit
                     info = cust_lookup[cid]
-                    if idx_to is not None:
-                        wh_km = dist_matrix[0, idx_to]
-                    else:
-                        wh_km = _haversine_km(wh_lat, wh_lng, c_lat, c_lng)
-                        
+                    wh_km = _haversine_km(wh_lat, wh_lng, c_lat, c_lng)
                     new_rows.append({
                         "schedule_date":            d,
                         "sales_id":                 sid,
@@ -823,7 +789,6 @@ class MultiSalesManScheduler:
                     already_today.add(cid)
                     added[cid]  = added.get(cid, 0) + 1
                     cur_lat, cur_lng = c_lat, c_lng
-                    cur_id = cid
 
                     if remaining < avg_visit_minutes + 2:
                         break
@@ -939,8 +904,7 @@ class MultiSalesManScheduler:
         )
 
 class TerritoryScheduler:    
-    def __init__(self, osrm_helper: Optional[OSRMHelper] = None):
-        self.osrm_helper = osrm_helper
+    def __init__(self): pass
     
     def solve(self,
         
@@ -958,8 +922,9 @@ class TerritoryScheduler:
         avg_speed: int = DEFAULT_AVG_SPEED_KMPH,
         customer_serving_time: int = DEFAULT_AVG_VISIT_MINUTES,
         salesman_daily_work_minutes: int = DEFAULT_DAILY_WORK_MINUTES,
-        
-        solver_time: Optional[int] = DEFAULT_SOLVER_TIME
+
+        solver_time: Optional[int] = DEFAULT_SOLVER_TIME,
+        require_min_visit: bool = True
         ) -> pd.DataFrame:
         """
             Returns a detailed_schedule DataFrame (one row per customer-visit).
@@ -992,30 +957,29 @@ class TerritoryScheduler:
         
         customer_lookup_dict = customer_df.set_index("customer_id").to_dict("index")
         
-        # ── Calculate direct travel times using OSRM Table Service if available, else Haversine
-        coords = [(terr_warehouse_lat, terr_warehouse_lng)]
+        # ── Calculate direct travel times
+        # Calculate warehouse-to-customer travel times
+        _wh_legs = []
         for customer_id in customer_ids:
             c = customer_lookup_dict[customer_id]
-            coords.append((float(c["gps_lat"]), float(c["gps_lng"])))
-
-        dist_matrix, dur_matrix = get_distance_matrix(coords, self.osrm_helper, avg_speed)
-
-        # Extract warehouse-to-customer travel times in minutes
-        _wh_legs = [max(1, round(dur_matrix[0, idx])) for idx in range(1, len(coords))]
-
-        # Extract all pairwise inter-customer travel times in minutes
+            km = _haversine_km(terr_warehouse_lat, terr_warehouse_lng, float(c["gps_lat"]), float(c["gps_lng"]))
+            _wh_legs.append(max(1, round(((km / avg_speed) * 60))))
+        
+        # Calculate all pairwise inter-customer travel times
         _all_inter = []
-        for i in range(1, len(coords)):
-            for j in range(1, len(coords)):
+        for i, cid1 in enumerate(customer_ids):
+            c1 = customer_lookup_dict[cid1]
+            lat1, lng1 = float(c1["gps_lat"]), float(c1["gps_lng"])
+            for j, cid2 in enumerate(customer_ids):
                 if i == j:
                     continue
-                _all_inter.append(max(1, round(dur_matrix[i, j])))
+                c2 = customer_lookup_dict[cid2]
+                lat2, lng2 = float(c2["gps_lat"]), float(c2["gps_lng"])
+                km = _haversine_km(lat1, lng1, lat2, lng2)
+                _all_inter.append(max(1, round(km / avg_speed * 60)))        
 
         # Scale down the raw average pairwise distance to account for geographic clustering of sequential stops (0.35 is geographically normalization is correct)
-        # For OSRM routing, road distances and speed variance make travel duration estimations higher, so we use a more conservative multiplier (0.50) to prevent overscheduling.
-        is_osrm = self.osrm_helper and self.osrm_helper.mode != "haversine"
-        multiplier = 0.50 if is_osrm else 0.35
-        avg_leg_travel_min = max(1, round(float(np.mean(_all_inter)) * multiplier)) if _all_inter else 4
+        avg_leg_travel_min = max(1, round(float(np.mean(_all_inter)) * 0.35)) if _all_inter else 4
         wh_leg_min = max(0, round(float(np.mean(_wh_legs)))) if _wh_legs else 5
         
         print(f"""
@@ -1076,9 +1040,6 @@ class TerritoryScheduler:
                     )
             
             # Constraints
-            # NOTE: There is NO single-salesperson assignment lock constraint here.
-            # This allows multiple salespeople to be assigned to and visit the same customer
-            # on different days during the month (multi-salesperson coverage enabled).
             for customer_id in customer_ids:
                 for salesman_id in salesman_ids:
                     for date in valid_dates:
@@ -1120,9 +1081,6 @@ class TerritoryScheduler:
             
             # 5. Workload minutes constraint
             wh_overhead = max(0, wh_leg_min - avg_leg_travel_min)
-            is_osrm = self.osrm_helper and self.osrm_helper.mode != "haversine"
-            # If OSRM is active, use a safety buffer of 15 minutes to absorb daily route sequencing variations.
-            solver_work_limit = salesman_daily_work_minutes - 15 if is_osrm else salesman_daily_work_minutes
             for salesman_id in salesman_ids:
                 for date in valid_dates:
                     has_visits = model.new_bool_var(f"has_visit_{salesman_id}_{date.strftime('%Y%m%d')}")
@@ -1131,7 +1089,7 @@ class TerritoryScheduler:
                                         for customer_id in customer_ids])
                     model.add(
                         sum((customer_serving_time + avg_leg_travel_min) * visit_of_customer_by_salesman_on_that_day[(customer_id, salesman_id, date)] 
-                            for customer_id in customer_ids) + wh_overhead * has_visits <= solver_work_limit
+                            for customer_id in customer_ids) + wh_overhead * has_visits <= salesman_daily_work_minutes
                     )
             
             # 6. Each customer visited at most once per day
@@ -1311,7 +1269,22 @@ class TerritoryScheduler:
         assigned_salesman_to_customer = {}
         customer_visit_as_per_segment = {}
         
-        if can_enforce_min_visit:
+        if not require_min_visit:
+            # User explicitly disabled the min-1-visit requirement from the UI.
+            print(f"  [{territory_id}/{truck_category}] min-1-visit DISABLED by user. Solving without min-visit constraint (caps = {SEG_CAPS})...")
+            status, solver, visit_of_customer_by_salesman_on_that_day, assigned_salesman_to_customer, customer_visit_as_per_segment = _attempt_solve(
+                enforce_min_visit=False,
+                caps_to_use=SEG_CAPS
+            )
+            if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+                print(f"  [{territory_id}/{truck_category}] Solver INFEASIBLE with normal caps. Retrying without min-visit and default caps {DEFAULT_SEG_CAPS}...")
+                fallback_used = True
+                caps_to_use = DEFAULT_SEG_CAPS
+                status, solver, visit_of_customer_by_salesman_on_that_day, assigned_salesman_to_customer, customer_visit_as_per_segment = _attempt_solve(
+                    enforce_min_visit=False,
+                    caps_to_use=DEFAULT_SEG_CAPS
+                )
+        elif can_enforce_min_visit:
             print(f"  [{territory_id}/{truck_category}] Attempting solve with min-1-visit constraint and normal caps {SEG_CAPS}...")
             status, solver, visit_of_customer_by_salesman_on_that_day, assigned_salesman_to_customer, customer_visit_as_per_segment = _attempt_solve(
                 enforce_min_visit=True,
@@ -1465,15 +1438,11 @@ class DailyRoutePlanner:
             route_leg_km        — one-way distance from previous stop
             cumulative_route_km — running total km for the day
     """
-    def __init__(self, osrm_helper: Optional[OSRMHelper] = None):
-        self.osrm_helper = osrm_helper
-
     def get_route(
         self,
         day_schedule: pd.DataFrame,
         start_lat: float,
         start_lng: float,
-        avg_speed_kmph: float = 32.0,
     ) -> pd.DataFrame:
         if day_schedule.empty:
             return day_schedule.copy()
@@ -1481,26 +1450,16 @@ class DailyRoutePlanner:
         df_c = day_schedule.copy().reset_index(drop=True)
         n_cust = len(df_c)
 
-        # Setup route coordinates list: node 0 = warehouse, node 1..N = customers
-        route_coords = [(start_lat, start_lng)]
-        for _, row in df_c.iterrows():
-            route_coords.append((float(row["gps_lat"]), float(row["gps_lng"])))
-
-        # Fetch OSRM distance and duration matrices
-        dist_matrix, dur_matrix = get_distance_matrix(route_coords, self.osrm_helper, avg_speed_kmph)
-
         if n_cust == 1:
             row = df_c.loc[0].to_dict()
-            leg_km = dist_matrix[0, 1]
-            leg_min = dur_matrix[0, 1]
+            leg_km = _haversine_km(start_lat, start_lng, float(row["gps_lat"]), float(row["gps_lng"]))
             row["route_leg_km"] = round(leg_km, 3)
             row["cumulative_route_km"] = round(leg_km, 3)
-            row["estimated_travel_minutes"] = round(leg_min, 1)
             result = pd.DataFrame([row])
             result["route_rank"] = [1]
             return result
 
-        # Setup node coordinates mapping for fallback or diagnostics
+        # Setup node coordinates mapping: node 0 = warehouse, node 1..N = customers
         def _get_node_coords(node_idx: int) -> tuple[float, float]:
             if node_idx <= 0 or node_idx > n_cust:
                 return (start_lat, start_lng)
@@ -1519,8 +1478,10 @@ class DailyRoutePlanner:
                 to_node = manager.IndexToNode(to_index)
                 if to_node <= 0 or to_node > n_cust:
                     return 0
-                # Lookup in dist_matrix (km) and convert to meters (integer precision)
-                return int(dist_matrix[from_node, to_node] * 1000)
+                lat_i, lng_i = _get_node_coords(from_node)
+                lat_j, lng_j = _get_node_coords(to_node)
+                # multiply by 1000 to get meters for integer precision
+                return int(_haversine_km(lat_i, lng_i, lat_j, lng_j) * 1000)
             except Exception as e:
                 print(f"  [Warning] Exception in distance callback for index ({from_index} -> {to_index}): {e}")
                 return 999999
@@ -1533,6 +1494,24 @@ class DailyRoutePlanner:
         search_parameters.first_solution_strategy = (
             routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
         )
+
+
+        """
+            Commented out the Guided Local Path
+        """
+        
+        '''
+        search_parameters.local_search_metaheuristic = (
+            routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
+        )
+        search_parameters.time_limit.seconds = 1  # solve very
+        '''
+
+        # Note: We do NOT set local_search_metaheuristic to GUIDED_LOCAL_SEARCH.
+        # Leaving it default (UNSET) allows the solver to run standard local search
+        # and terminate immediately once it reaches a local minimum (usually in milliseconds),
+        # instead of wasting the entire time limit trying to escape local minima.
+        # This keeps the overall schedule generation execution time extremely fast.
         search_parameters.time_limit.seconds = 2  # Safety guard, terminates early in milliseconds
 
         solution = routing.SolveWithParameters(search_parameters)
@@ -1548,7 +1527,7 @@ class DailyRoutePlanner:
                 4: "ROUTING_INVALID"
             }.get(status_code, f"UNKNOWN ({status_code})")
             print(f"  ⚠️  Routing solver failed to find solution (Status: {status_name}). Falling back to Nearest Neighbour.")
-            return self._nn_fallback(day_schedule, dist_matrix, dur_matrix)
+            return self._nn_fallback(day_schedule, start_lat, start_lng)
 
         # Reconstruct route from solution
         index = routing.Start(0)
@@ -1564,22 +1543,17 @@ class DailyRoutePlanner:
 
         # Compute legs and cumulative km
         route: list[dict] = []
+        cur_lat, cur_lng = start_lat, start_lng
         cumulative_km = 0.0
-        prev_node = 0
 
-        for i, idx in enumerate(route_indices):
-            row = ordered_df.iloc[i]
-            curr_node = idx + 1
-            leg_km = dist_matrix[prev_node, curr_node]
-            leg_min = dur_matrix[prev_node, curr_node]
-            
+        for idx, row in ordered_df.iterrows():
+            leg_km = _haversine_km(cur_lat, cur_lng, float(row["gps_lat"]), float(row["gps_lng"]))
             cumulative_km += leg_km
             row_dict = row.to_dict()
             row_dict["route_leg_km"] = round(leg_km, 3)
             row_dict["cumulative_route_km"] = round(cumulative_km, 3)
-            row_dict["estimated_travel_minutes"] = round(leg_min, 1)
             route.append(row_dict)
-            prev_node = curr_node
+            cur_lat, cur_lng = float(row["gps_lat"]), float(row["gps_lng"])
 
         result = pd.DataFrame(route)
         result["route_rank"] = range(1, len(result) + 1)
@@ -1588,29 +1562,30 @@ class DailyRoutePlanner:
     def _nn_fallback(
         self,
         day_schedule: pd.DataFrame,
-        dist_matrix: np.ndarray,
-        dur_matrix: np.ndarray,
+        start_lat: float,
+        start_lng: float,
     ) -> pd.DataFrame:
-        unvisited = list(range(len(day_schedule)))
+        unvisited = day_schedule.copy().reset_index(drop=True)
         route: list[dict] = []
+        cur_lat, cur_lng = start_lat, start_lng
         cumulative_km = 0.0
-        
-        cur_node = 0
-        while unvisited:
-            # find the nearest unvisited node from cur_node
-            nearest_idx = min(unvisited, key=lambda idx: dist_matrix[cur_node, idx + 1])
-            unvisited.remove(nearest_idx)
-            
-            row = day_schedule.iloc[nearest_idx].to_dict()
-            leg_km = dist_matrix[cur_node, nearest_idx + 1]
-            leg_min = dur_matrix[cur_node, nearest_idx + 1]
+
+        while not unvisited.empty:
+            distances = unvisited.apply(
+                lambda r: _haversine_km(cur_lat, cur_lng, float(r["gps_lat"]), float(r["gps_lng"])),
+                axis=1,
+            )
+            nearest_idx = int(distances.idxmin())
+            row         = unvisited.loc[nearest_idx].to_dict()
+            leg_km      = distances[nearest_idx]
             cumulative_km += leg_km
-            row["route_leg_km"] = round(leg_km, 3)
+            row["route_leg_km"]        = round(leg_km, 3)
             row["cumulative_route_km"] = round(cumulative_km, 3)
-            row["estimated_travel_minutes"] = round(leg_min, 1)
             route.append(row)
-            cur_node = nearest_idx + 1
-            
+            cur_lat = float(row["gps_lat"])
+            cur_lng = float(row["gps_lng"])
+            unvisited = unvisited.drop(index=nearest_idx).reset_index(drop=True)
+
         result = pd.DataFrame(route)
         result["route_rank"] = range(1, len(result) + 1)
         return result
@@ -1644,7 +1619,6 @@ def build_route_map_for_salesperson(
     warehouse_lat:     float = 0.0,
     warehouse_lng:     float = 0.0,
     zoom_start:        int   = 12,
-    osrm_helper:       Optional[Any] = None,
 ):
     """
     Folium map for ONE salesperson on ONE day.
@@ -1700,14 +1674,7 @@ def build_route_map_for_salesperson(
             ),
         ).add_to(m)
 
-    road_coords = route_coords
-    if osrm_helper and osrm_helper.mode != "haversine":
-        coords_tuples = [(float(pt[0]), float(pt[1])) for pt in route_coords]
-        route_info = osrm_helper.get_route(coords_tuples)
-        if route_info and "geometry" in route_info:
-            road_coords = route_info["geometry"]
-
-    line = folium.PolyLine(road_coords, weight=3, color="navy")
+    line = folium.PolyLine(route_coords, weight=3, color="navy")
     m.add_child(line)
     PolyLineTextPath(line, "➤", repeat=True, offset=7,
                      attributes={"fill": "red", "font-size": "14"}).add_to(m)
@@ -1799,15 +1766,7 @@ def build_territory_day_map(
                 ),
             ).add_to(m)
 
-        road_coords = route_coords
-        osrm_h = getattr(result, "osrm_helper", None)
-        if osrm_h and osrm_h.mode != "haversine":
-            coords_tuples = [(float(pt[0]), float(pt[1])) for pt in route_coords]
-            route_info = osrm_h.get_route(coords_tuples)
-            if route_info and "geometry" in route_info:
-                road_coords = route_info["geometry"]
-
-        line = folium.PolyLine(road_coords, weight=3, color=sp_color, opacity=0.8)
+        line = folium.PolyLine(route_coords, weight=3, color=sp_color, opacity=0.8)
         m.add_child(line)
         PolyLineTextPath(line, "➤", repeat=True, offset=7,
                          attributes={"fill": sp_color, "font-size": "13"}).add_to(m)
@@ -1843,182 +1802,6 @@ def build_territory_day_map(
             High=red &nbsp; Medium=orange &nbsp; Low=gray (segment in tooltip)
         </span>
     </div>"""
-    m.get_root().html.add_child(folium.Element(legend_html))
-    return m
-
-
-def plot_territory_customers(
-    customer_df:    pd.DataFrame,
-    territory_df:   pd.DataFrame,
-    territory_id:   str,
-    rfm_scores_df:  Optional[pd.DataFrame] = None,
-    zoom_start:     int = 11,
-):
-    """
-    Plots the customers, warehouse, and territory radius for a specified territory ID on an interactive Folium map.
-    
-    Parameters:
-    - customer_df (pd.DataFrame): Customer master data containing coordinates.
-    - territory_df (pd.DataFrame): Territory master data containing center/warehouse coordinates.
-    - territory_id (str): The ID of the territory to plot (e.g., 'TER_RUH').
-    - rfm_scores_df (pd.DataFrame, optional): RFM scores data containing the rfm_segment_final.
-    - zoom_start (int): Initial zoom level.
-    
-    Returns:
-    - folium.Map: The interactive map.
-    """
-    try:
-        import folium
-    except ImportError:
-        raise ImportError("pip install folium")
-    
-    # 1. Fetch territory details
-    terr_row = territory_df[territory_df['territory_id'] == territory_id]
-    if terr_row.empty:
-        raise ValueError(f"Territory ID '{territory_id}' not found in territory_df.")
-    
-    terr = terr_row.iloc[0]
-    center_lat = float(terr['center_lat'])
-    center_lng = float(terr['center_lng'])
-    radius_km  = float(terr['radius_km'])
-    wh_lat     = float(terr['warehouse_lat'])
-    wh_lng     = float(terr['warehouse_lng'])
-    wh_addr    = terr.get('warehouse_address', 'Warehouse')
-    
-    # Filter customers for this territory
-    cust_terr = customer_df[customer_df['territory_id'] == territory_id].copy()
-    if cust_terr.empty:
-        print(f"Warning: No customers found for territory ID '{territory_id}'.")
-    
-    # Merge RFM scores if provided
-    if rfm_scores_df is not None and not rfm_scores_df.empty:
-        use_cols = ['customer_id', 'rfm_segment_final']
-        use_cols = [c for c in use_cols if c in rfm_scores_df.columns]
-        cust_terr = cust_terr.merge(
-            rfm_scores_df[use_cols], 
-            on='customer_id', 
-            how='left'
-        )
-        if 'rfm_segment_final' in cust_terr.columns:
-            cust_terr['rfm_segment_final'] = cust_terr['rfm_segment_final'].fillna(cust_terr['volume_tier'].str.capitalize())
-        else:
-            cust_terr['rfm_segment_final'] = cust_terr['volume_tier'].str.capitalize()
-    else:
-        cust_terr['rfm_segment_final'] = cust_terr['volume_tier'].str.capitalize()
-    
-    # 2. Initialize the Folium map centered on the territory center
-    m = folium.Map(location=[center_lat, center_lng], zoom_start=zoom_start, control_scale=True)
-    
-    # 3. Add territory radius circle
-    folium.Circle(
-        location=[center_lat, center_lng],
-        radius=radius_km * 1000,  # convert km to meters
-        color="#3f51b5",
-        weight=2,
-        fill=True,
-        fill_color="#3f51b5",
-        fill_opacity=0.08,
-        tooltip=f"Territory Boundary: {radius_km} km radius"
-    ).add_to(m)
-    
-    # Add territory center marker
-    folium.Marker(
-        location=[center_lat, center_lng],
-        icon=folium.Icon(color="blue", icon="info-sign"),
-        tooltip=f"Territory Center ({territory_id})"
-    ).add_to(m)
-    
-    # 4. Add Warehouse Marker
-    if wh_lat != 0.0 or wh_lng != 0.0:
-        folium.Marker(
-            location=[wh_lat, wh_lng],
-            icon=folium.Icon(color="black", icon="home", prefix="fa"),
-            tooltip="Warehouse Start/End Point",
-            popup=folium.Popup(
-                f"<b>Warehouse: {territory_id}</b><br>{wh_addr}<br>Lat: {wh_lat}, Lng: {wh_lng}",
-                max_width=300
-            )
-        ).add_to(m)
-        
-    # Color scheme for RFM segments (Red for High, Amber for Medium, Slate Grey for Low)
-    segment_colors = {
-        'High': '#e53935',
-        'Medium': '#ffb300',
-        'Low': '#757575'
-    }
-    
-    # 5. Add Customer Markers
-    for _, row in cust_terr.iterrows():
-        lat = float(row['gps_lat'])
-        lng = float(row['gps_lng'])
-        cust_id = row['customer_id']
-        shop_name = row['shop_name']
-        category = row.get('shop_category', 'Unknown')
-        segment = row.get('rfm_segment_final', 'Low')
-        cold_required = bool(row.get('cold_truck_required', False))
-        rating = int(row.get('customer_rating', 1))
-        review = float(row.get('review_rating', 0.0))
-        locality = row.get('locality', 'Unknown')
-        
-        color = segment_colors.get(segment, '#757575')
-        
-        # Build premium HTML popup
-        truck_icon = "🧊" if cold_required else "🚚"
-        truck_text = "Cold Chain Required" if cold_required else "Ambient Delivery"
-        stars = "★" * rating + "☆" * (5 - rating)
-        
-        popup_html = f"""
-        <div style="font-family: Arial, sans-serif; font-size: 12px; line-height: 1.4; color: #333; min-width: 200px;">
-            <h4 style="margin: 0 0 6px 0; color: #1a73e8; border-bottom: 1px solid #ddd; padding-bottom: 4px;">{shop_name}</h4>
-            <b>ID:</b> {cust_id}<br>
-            <b>Category:</b> {category}<br>
-            <b>Locality:</b> {locality}<br>
-            <b>Segment/Tier:</b> <span style="color: {color}; font-weight: bold;">{segment}</span><br>
-            <b>Truck Type:</b> {truck_icon} {truck_text}<br>
-            <b>Rating:</b> <span style="color: #ff9800;">{stars}</span> ({review} review)<br>
-            <b>Lat/Lng:</b> {lat}, {lng}
-        </div>
-        """
-        
-        folium.CircleMarker(
-            location=[lat, lng],
-            radius=6,
-            color='#ffffff',
-            weight=1.5,
-            fill=True,
-            fill_color=color,
-            fill_opacity=0.9,
-            popup=folium.Popup(popup_html, max_width=250),
-            tooltip=f"{shop_name} ({cust_id}) - {segment}"
-        ).add_to(m)
-        
-    # 6. Add Custom HTML Legend
-    legend_html = f"""
-    <div style="position: fixed; 
-                bottom: 20px; right: 20px; width: 180px; height: 160px; 
-                z-index:9999; font-size:12px; font-family: Arial, sans-serif;
-                background-color: rgba(255, 255, 255, 0.9);
-                border: 1px solid #ccc; border-radius: 8px; padding: 10px;
-                box-shadow: 2px 2px 5px rgba(0,0,0,0.15);">
-        <h4 style="margin: 0 0 8px 0; font-size: 13px; font-weight: bold; border-bottom: 1px solid #ddd; padding-bottom: 4px;">Legend</h4>
-        <div style="margin-bottom: 5px;">
-            <span style="display:inline-block; width:12px; height:12px; background-color:#e53935; border-radius:50%; margin-right:8px; border:1px solid #fff;"></span>
-            <b>High Segment</b>
-        </div>
-        <div style="margin-bottom: 5px;">
-            <span style="display:inline-block; width:12px; height:12px; background-color:#ffb300; border-radius:50%; margin-right:8px; border:1px solid #fff;"></span>
-            <b>Medium Segment</b>
-        </div>
-        <div style="margin-bottom: 8px;">
-            <span style="display:inline-block; width:12px; height:12px; background-color:#757575; border-radius:50%; margin-right:8px; border:1px solid #fff;"></span>
-            <b>Low Segment</b>
-        </div>
-        <div style="border-top: 1px solid #ddd; padding-top: 6px;">
-            <b>🏠 Black Icon:</b> Warehouse<br>
-            <b>🔵 Blue Icon:</b> Center
-        </div>
-    </div>
-    """
     m.get_root().html.add_child(folium.Element(legend_html))
     return m
 
@@ -2064,15 +1847,9 @@ def build_stop_to_stop_distance_table(
                       "gps_lat": float(row["gps_lat"]), "gps_lng": float(row["gps_lng"])})
 
     rows = []
-    # Build coordinates list for get_distance_matrix
-    coords = [(s["gps_lat"], s["gps_lng"]) for s in stops]
-    osrm_helper = getattr(result, "osrm_helper", None)
-    dist_matrix, dur_matrix = get_distance_matrix(coords, osrm_helper, avg_speed)
-
     for i in range(len(stops) - 1):
         f, t = stops[i], stops[i + 1]
-        km = dist_matrix[i, i + 1]
-        minutes = dur_matrix[i, i + 1]
+        km = _haversine_km(f["gps_lat"], f["gps_lng"], t["gps_lat"], t["gps_lng"])
         rows.append({
             "stop_from":  f["stop_num"],  "stop_to":   t["stop_num"],
             "from_id":    f["customer_id"], "from_shop": f["shop_name"],
@@ -2080,7 +1857,7 @@ def build_stop_to_stop_distance_table(
             "to_id":      t["customer_id"], "to_shop":   t["shop_name"],
             "to_lat":     round(t["gps_lat"], 6), "to_lng": round(t["gps_lng"], 6),
             "leg_km":     round(km, 3),
-            "leg_min":    round(minutes, 1),
+            "leg_min":    round((km / avg_speed) * 60, 1),
         })
     return pd.DataFrame(rows)
 
@@ -2112,15 +1889,9 @@ def build_stop_to_stop_map(
                    zoom_start=zoom_start)
 
     # Draw each leg + distance label at midpoint
-    osrm_helper = getattr(result, "osrm_helper", None)
     for _, leg in dist_df.iterrows():
         coords = [[leg["from_lat"], leg["from_lng"]], [leg["to_lat"], leg["to_lng"]]]
-        road_coords = coords
-        if osrm_helper and osrm_helper.mode != "haversine":
-            route_info = osrm_helper.get_route(coords)
-            if route_info and "geometry" in route_info:
-                road_coords = route_info["geometry"]
-        folium.PolyLine(road_coords, weight=3, color="navy", opacity=0.85).add_to(m)
+        folium.PolyLine(coords, weight=3, color="navy", opacity=0.85).add_to(m)
         mid_lat = (leg["from_lat"] + leg["to_lat"]) / 2
         mid_lng = (leg["from_lng"] + leg["to_lng"]) / 2
         folium.Marker(

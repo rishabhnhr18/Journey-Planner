@@ -29,8 +29,8 @@ from collections import defaultdict
 # ─────────────────────────────────────────────────────────────────────────────
 # GLOBAL CONFIGURATION CONSTANTS (synchronized with scheduler_final.py)
 # ─────────────────────────────────────────────────────────────────────────────
-DEFAULT_SOLVER_CAPS = {"High": 20, "Medium": 11, "Low": 5}
-DEFAULT_REPORT_CAPS = {"High": 20, "Medium": 11, "Low": 5} # Matches SEG_CAPS in scheduler_final.py
+DEFAULT_SOLVER_CAPS = {"High": 15, "Medium": 6, "Low": 4}
+DEFAULT_REPORT_CAPS = {"High": 15, "Medium": 6, "Low": 4} # Matches SEG_CAPS in scheduler_final.py
 
 TRAVEL_LEG_TOLERANCE_MIN = 5.0
 TREAT_TRAVEL_MIN_AS_INFO = True  # Check 9 is informational
@@ -212,14 +212,10 @@ def validate_schedule_final(
     daily_cap_viol = []
     grouped = detailed.groupby(["sales_id", "schedule_date"])
 
-    is_osrm = hasattr(result, "osrm_helper") and result.osrm_helper is not None and result.osrm_helper.mode != "haversine"
-
     for (sid, date), grp in grouped:
         n_cust = len(grp)
 
-        if is_osrm and "estimated_travel_minutes" in grp.columns and grp["estimated_travel_minutes"].notna().all():
-            avg_inter_min = float(grp["estimated_travel_minutes"].mean())
-        elif ("route_leg_km" in grp.columns and grp["route_leg_km"].notna().all()
+        if ("route_leg_km" in grp.columns and grp["route_leg_km"].notna().all()
                 and n_cust > 1):
             avg_inter_min = float((grp["route_leg_km"] / avg_speed_kmh * 60).mean())
         elif "estimated_travel_minutes" in grp.columns:
@@ -251,9 +247,7 @@ def validate_schedule_final(
     for (sid, date), grp in grouped:
         service_t = len(grp) * avg_visit_min
 
-        if is_osrm and "estimated_travel_minutes" in grp.columns and grp["estimated_travel_minutes"].notna().all():
-            travel_t = float(grp["estimated_travel_minutes"].sum())
-        elif ("route_leg_km" in grp.columns and grp["route_leg_km"].notna().all()):
+        if ("route_leg_km" in grp.columns and grp["route_leg_km"].notna().all()):
             travel_t = float(grp["route_leg_km"].sum() / avg_speed_kmh * 60)
         elif "estimated_travel_minutes" in grp.columns:
             travel_t = float(grp["estimated_travel_minutes"].sum())
@@ -333,7 +327,7 @@ def validate_schedule_final(
                 )
 
     # ─────────────────────────────────────────────────────────────────────────
-    # CHECK 10: route_leg_km accuracy (OSRM distance if active, else haversine ± 500 m)
+    # CHECK 10: route_leg_km accuracy (haversine from previous stop ± 500 m)
     # ─────────────────────────────────────────────────────────────────────────
     leg_viol = []
     if "route_leg_km" in detailed.columns and "route_rank" in detailed.columns:
@@ -341,32 +335,12 @@ def validate_schedule_final(
             wh_lat_v = grp.iloc[0]["warehouse_lat"]
             wh_lng_v = grp.iloc[0]["warehouse_lng"]
             grp_sorted = grp.sort_values("route_rank")
-            
-            # Use OSRM table matrices if OSRM is enabled to get exact road distance
-            dist_matrix = None
-            if is_osrm:
-                coords = [(wh_lat_v, wh_lng_v)]
-                for _, row in grp_sorted.iterrows():
-                    coords.append((float(row["gps_lat"]), float(row["gps_lng"])))
-                
-                osrm_data = result.osrm_helper.get_table(coords)
-                if osrm_data and "distances" in osrm_data:
-                    dist_matrix = osrm_data["distances"]
-
             prev_lat, prev_lng = wh_lat_v, wh_lng_v
-            for idx, (_, row) in enumerate(grp_sorted.iterrows()):
+            for _, row in grp_sorted.iterrows():
+                expected_leg = haversine_km(
+                    prev_lat, prev_lng, row["gps_lat"], row["gps_lng"]
+                )
                 stored_leg = row.get("route_leg_km", 0.0) or 0.0
-                
-                if dist_matrix is not None and idx + 1 < len(dist_matrix):
-                    # Distance from node idx (previous stop) to node idx + 1 (current stop) in km
-                    # Index 0 in dist_matrix is warehouse, so 1st stop is index 1
-                    dist_val = dist_matrix[idx][idx + 1]
-                    expected_leg = dist_val / 1000.0 if dist_val is not None else 0.0
-                else:
-                    expected_leg = haversine_km(
-                        prev_lat, prev_lng, row["gps_lat"], row["gps_lng"]
-                    )
-                
                 if abs(stored_leg - expected_leg) > LEG_KM_TOLERANCE_M / 1000.0:   # configurable tolerance
                     leg_viol.append(
                         f"{sid}/{date.date()} stop#{int(row['route_rank'])}: "

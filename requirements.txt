@@ -159,6 +159,7 @@ opentelemetry-semantic-conventions==0.56b0
 orjson==3.10.18
 ormsgpack==1.10.0
 ortools==9.15.6755
+osrm-bindings==0.3.0
 overrides==7.7.0
 packaging==24.2
 pandas==2.3.1
@@ -172,6 +173,7 @@ pikepdf==9.10.1
 pillow==11.2.1
 pipreqs==0.5.0
 platformdirs==4.3.8
+plotly==6.8.0
 posthog==5.4.0
 prompt_toolkit==3.0.51
 propcache==0.5.2
@@ -241,6 +243,7 @@ sse-starlette==2.3.6
 stack-data==0.6.3
 starlette==0.46.2
 streamlit==1.58.0
+streamlit-folium==0.27.2
 sympy==1.14.0
 tabulate==0.9.0
 tenacity==8.5.0

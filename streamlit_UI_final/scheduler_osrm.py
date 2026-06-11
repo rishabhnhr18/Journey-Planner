@@ -59,7 +59,7 @@ from ortools.constraint_solver import pywrapcp
 
 from osrm_helper import OSRMHelper, get_distance_matrix
 
-SEG_CAPS = {"High":15, "Medium": 6, "Low": 4}
+SEG_CAPS = {"High": 20, "Medium": 11, "Low": 5}
 DEFAULT_SEG_CAPS = {"High": 4, "Medium": 2, "Low": 1}
 MIN_VISIT = 1
 DEFAULT_DAILY_WORK_MINUTES = 480
@@ -313,7 +313,7 @@ class MultiSalesManScheduler:
         self.customer_serving_time = int(cfg.get('customer_serving_time', 22))
         self.salesman_daily_work_minutes = int(cfg.get('salesman_daily_work_minutes', 480))
         
-        osrm_mode = cfg.get('osrm_routing_mode', 'haversine')
+        osrm_mode = cfg.get('osrm_routing_mode', 'http')
         osrm_url = cfg.get('osrm_server_url', 'http://router.project-osrm.org')
         osrm_path = cfg.get('osrm_data_path', None)
         self.osrm_helper = OSRMHelper(mode=osrm_mode, server_url=osrm_url, data_path=osrm_path)
@@ -331,6 +331,7 @@ class MultiSalesManScheduler:
         van_df:           pd.DataFrame,
         month_start_date: str | pd.Timestamp = "2026-07-01",
         territory_id:     Optional[str]      = None,   # None → all territories
+        require_min_visit: bool              = True,    # enforce min-1-visit per customer
     ) -> MultiScheduleResult:
         
         if (territory_df is None or territory_df.empty or
@@ -350,6 +351,7 @@ class MultiSalesManScheduler:
 
         all_detailed: list[pd.DataFrame] = []
         sp_results:     dict[str, SalespersonScheduleResult] = {}
+        ter_warehouses: dict[str, tuple[float, float]] = {}
 
         for _, territory_row in generate_plan_for_territory.iterrows():
             # Extracting out the territory ID, customers and the salesman
@@ -368,6 +370,7 @@ class MultiSalesManScheduler:
             #Extracting the territory's warehouse latitute and longitude
             terr_warehouse_lat = territory_info[terr_id]['warehouse_lat']
             terr_warehouse_lng = territory_info[terr_id]['warehouse_lng']
+            ter_warehouses[terr_id] = (terr_warehouse_lat, terr_warehouse_lng)
 
             #Territory blocked dates
             terr_blocked_dates = get_territory_blocked_dates(terr_id, holiday_df,month_start, month_end)
@@ -451,7 +454,8 @@ class MultiSalesManScheduler:
                     avg_speed = self.avg_speed,
                     customer_serving_time = self.customer_serving_time,
                     salesman_daily_work_minutes = self.salesman_daily_work_minutes,                    
-                    solver_time = MIN_SOLVER_TIME if group_name == 'cold' else MAX_SOLVER_TIME
+                    solver_time = MIN_SOLVER_TIME if group_name == 'cold' else MAX_SOLVER_TIME,
+                    require_min_visit = require_min_visit
                 )
                 
                 if datailed_schedule.empty:
@@ -515,7 +519,6 @@ class MultiSalesManScheduler:
         cold_schedule   = combined[combined["truck_group"] == "cold"].reset_index(drop=True)
         normal_schedule = combined[combined["truck_group"] == "normal"].reset_index(drop=True)
         combined_daily  = self._build_combined_daily(sp_results)
-        ter_warehouses: dict[str, tuple[float, float]] = {}
 
         _CAPS = SEG_CAPS
 
@@ -591,7 +594,6 @@ class MultiSalesManScheduler:
 
         # ── Build compact daily visit plan ───────────────────────────────────
         daily_visit_plan = self._build_daily_visit_plan(combined)
-        ter_warehouses[terr_id] = (terr_warehouse_lat, terr_warehouse_lng)
         return MultiScheduleResult(
             detailed_schedule       = combined,
             cold_schedule           = cold_schedule,
@@ -612,7 +614,7 @@ class MultiSalesManScheduler:
         """
         parts: list[pd.DataFrame] = []
         for (sid, d), group in datailed_schedule.groupby(["sales_id", "schedule_date"]):
-            routed = self._route_planner.get_route(group.copy(), terr_warehouse_lat, terr_warehouse_lng)
+            routed = self._route_planner.get_route(group.copy(), terr_warehouse_lat, terr_warehouse_lng, self.avg_speed)
             parts.append(routed)
         if not parts: return datailed_schedule
         return pd.concat(parts, ignore_index=True)
@@ -959,7 +961,8 @@ class TerritoryScheduler:
         customer_serving_time: int = DEFAULT_AVG_VISIT_MINUTES,
         salesman_daily_work_minutes: int = DEFAULT_DAILY_WORK_MINUTES,
         
-        solver_time: Optional[int] = DEFAULT_SOLVER_TIME
+        solver_time: Optional[int] = DEFAULT_SOLVER_TIME,
+        require_min_visit: bool = True
         ) -> pd.DataFrame:
         """
             Returns a detailed_schedule DataFrame (one row per customer-visit).
@@ -1076,9 +1079,6 @@ class TerritoryScheduler:
                     )
             
             # Constraints
-            # NOTE: There is NO single-salesperson assignment lock constraint here.
-            # This allows multiple salespeople to be assigned to and visit the same customer
-            # on different days during the month (multi-salesperson coverage enabled).
             for customer_id in customer_ids:
                 for salesman_id in salesman_ids:
                     for date in valid_dates:
@@ -1121,8 +1121,8 @@ class TerritoryScheduler:
             # 5. Workload minutes constraint
             wh_overhead = max(0, wh_leg_min - avg_leg_travel_min)
             is_osrm = self.osrm_helper and self.osrm_helper.mode != "haversine"
-            # If OSRM is active, use a safety buffer of 15 minutes to absorb daily route sequencing variations.
-            solver_work_limit = salesman_daily_work_minutes - 15 if is_osrm else salesman_daily_work_minutes
+            # If OSRM is active, use a safety buffer of 30 minutes to absorb daily route sequencing variations.
+            solver_work_limit = salesman_daily_work_minutes - 30 if is_osrm else salesman_daily_work_minutes
             for salesman_id in salesman_ids:
                 for date in valid_dates:
                     has_visits = model.new_bool_var(f"has_visit_{salesman_id}_{date.strftime('%Y%m%d')}")
@@ -1260,7 +1260,7 @@ class TerritoryScheduler:
                 for sid in salesman_ids:
                     sp_total_visits[sid] = sum(visit_of_customer_by_salesman_on_that_day[(cid, sid, d)] for cid in customer_ids for d in valid_dates)
                 
-                BALANCING_PENALTY = 500
+                BALANCING_PENALTY = 1_000
                 for i, sid1 in enumerate(salesman_ids):
                     dates1 = sp_dates_dict.get(sid1, valid_dates)
                     w1 = len(dates1)
@@ -1311,7 +1311,22 @@ class TerritoryScheduler:
         assigned_salesman_to_customer = {}
         customer_visit_as_per_segment = {}
         
-        if can_enforce_min_visit:
+        if not require_min_visit:
+            # User explicitly disabled the min-1-visit requirement from the UI.
+            print(f"  [{territory_id}/{truck_category}] min-1-visit DISABLED by user. Solving without min-visit constraint (caps = {SEG_CAPS})...")
+            status, solver, visit_of_customer_by_salesman_on_that_day, assigned_salesman_to_customer, customer_visit_as_per_segment = _attempt_solve(
+                enforce_min_visit=False,
+                caps_to_use=SEG_CAPS
+            )
+            if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+                print(f"  [{territory_id}/{truck_category}] Solver INFEASIBLE with normal caps. Retrying without min-visit and default caps {DEFAULT_SEG_CAPS}...")
+                fallback_used = True
+                caps_to_use = DEFAULT_SEG_CAPS
+                status, solver, visit_of_customer_by_salesman_on_that_day, assigned_salesman_to_customer, customer_visit_as_per_segment = _attempt_solve(
+                    enforce_min_visit=False,
+                    caps_to_use=DEFAULT_SEG_CAPS
+                )
+        elif can_enforce_min_visit:
             print(f"  [{territory_id}/{truck_category}] Attempting solve with min-1-visit constraint and normal caps {SEG_CAPS}...")
             status, solver, visit_of_customer_by_salesman_on_that_day, assigned_salesman_to_customer, customer_visit_as_per_segment = _attempt_solve(
                 enforce_min_visit=True,

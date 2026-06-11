@@ -590,10 +590,19 @@ elif page == "⚡ Monthly Plan Generator":
                     scheduler_final.MIN_SOLVER_TIME = max(10, solve_time // 2)
                     scheduler_final.MAX_SOLVER_TIME = solve_time
 
+                    # Get OSRM config parameters
+                    cfg_vals = config_df.set_index("config_key")["config_value"].to_dict() if config_df is not None else {}
+                    osrm_mode = cfg_vals.get("osrm_routing_mode", "haversine")
+                    osrm_url = cfg_vals.get("osrm_server_url", "http://router.project-osrm.org")
+                    osrm_path = cfg_vals.get("osrm_data_path", "")
+
                     scheduler = MultiSalesManScheduler({
                         "avg_speed": speed,
                         "customer_serving_time": s_time,
-                        "salesman_daily_work_minutes": work_min
+                        "salesman_daily_work_minutes": work_min,
+                        "osrm_routing_mode": osrm_mode,
+                        "osrm_server_url": osrm_url,
+                        "osrm_data_path": osrm_path
                     })
                     res = scheduler.create_monthly_schedule(
                         customer_df=customer_df,
@@ -880,7 +889,8 @@ elif page == "🗺️ VRP Routing & Driver Maps":
                     sales_id=sel_driver,
                     schedule_date=sel_d,
                     warehouse_lat=wh_lat,
-                    warehouse_lng=wh_lng
+                    warehouse_lng=wh_lng,
+                    osrm_helper=getattr(res, "osrm_helper", None)
                 )
                 display_map(m, key=f"ind_map_{sel_driver}_{sel_d_str}")
         else:
@@ -1119,19 +1129,42 @@ elif page == "📈 Executive Visualization & Analytics":
             else:
                 t_cust_df = customer_df
                 
-            total_custs = len(t_cust_df)
-            unvisited_custs = len(res.unvisited_customers)
-            visited_custs = max(0, total_custs - unvisited_custs)
+            # Date-wise or Cumulative selectbox filter
+            avail_dates = sorted(detailed["schedule_date"].unique())
+            avail_dates_str = [pd.Timestamp(d).strftime("%Y-%m-%d") for d in avail_dates]
+            
+            selected_date_opt = st.selectbox(
+                "📅 Filter Visualizations by Date Scope",
+                ["Cumulative Month"] + avail_dates_str,
+                index=0,
+                key="plan_date_scope_selector"
+            )
+            
+            is_cumulative = (selected_date_opt == "Cumulative Month")
+            if is_cumulative:
+                view_detailed = detailed
+                total_custs = len(t_cust_df)
+                unvisited_custs = len(res.unvisited_customers)
+                visited_custs = max(0, total_custs - unvisited_custs)
+            else:
+                target_date = pd.Timestamp(selected_date_opt)
+                view_detailed = detailed[detailed["schedule_date"] == target_date]
+                total_custs = len(t_cust_df)
+                visited_custs = view_detailed["customer_id"].nunique()
+                unvisited_custs = max(0, total_custs - visited_custs)
             
             # Coverage metrics row
             p_m1, p_m2, p_m3 = st.columns(3)
             with p_m1:
-                st.metric("Total Scheduled Visits", len(detailed))
+                visits_label = "Total Scheduled Visits" if is_cumulative else f"Scheduled Visits ({selected_date_opt})"
+                st.metric(visits_label, len(view_detailed))
             with p_m2:
-                st.metric("Store Coverage Ratio", f"{visited_custs} / {total_custs} outlets", f"{visited_custs/total_custs*100:.1f}%" if total_custs > 0 else "0.0%")
+                coverage_label = "Store Coverage Ratio" if is_cumulative else f"Daily Store Coverage ({selected_date_opt})"
+                st.metric(coverage_label, f"{visited_custs} / {total_custs} outlets", f"{visited_custs/total_custs*100:.1f}%" if total_custs > 0 else "0.0%")
             with p_m3:
-                total_dist = detailed["route_leg_km"].sum() if "route_leg_km" in detailed.columns else 0.0
-                st.metric("Total Mileage Allotted", f"{total_dist:,.1f} km")
+                dist_label = "Total Mileage Allotted" if is_cumulative else f"Total Distance ({selected_date_opt})"
+                total_dist = view_detailed["route_leg_km"].sum() if "route_leg_km" in view_detailed.columns else 0.0
+                st.metric(dist_label, f"{total_dist:,.1f} km")
                 
             # Group by salesperson to show estimated workload
             cfg_vals = config_df.set_index("config_key")["config_value"].to_dict() if config_df is not None else {}
@@ -1139,19 +1172,19 @@ elif page == "📈 Executive Visualization & Analytics":
             avg_speed = float(cfg_vals.get("avg_speed_kmh", 32))
             
             # service minutes per salesperson
-            sp_service = detailed.groupby("sales_id").size().reset_index(name="service_min")
+            sp_service = view_detailed.groupby("sales_id").size().reset_index(name="service_min")
             sp_service["service_min"] = sp_service["service_min"] * service_time_min
             
-            if "route_leg_km" in detailed.columns:
-                sp_travel = detailed.groupby("sales_id")["route_leg_km"].sum().reset_index(name="travel_min")
+            if "route_leg_km" in view_detailed.columns:
+                sp_travel = view_detailed.groupby("sales_id")["route_leg_km"].sum().reset_index(name="travel_min")
                 sp_travel["travel_min"] = (sp_travel["travel_min"] / avg_speed * 60).round(1)
-                sp_dist = detailed.groupby("sales_id")["route_leg_km"].sum().reset_index(name="distance_km")
+                sp_dist = view_detailed.groupby("sales_id")["route_leg_km"].sum().reset_index(name="distance_km")
             else:
                 sp_travel = pd.DataFrame(columns=["sales_id", "travel_min"])
                 sp_dist = pd.DataFrame(columns=["sales_id", "distance_km"])
                 sp_dist["distance_km"] = 0.0
                 
-            sp_visits = detailed.groupby("sales_id").size().reset_index(name="visits")
+            sp_visits = view_detailed.groupby("sales_id").size().reset_index(name="visits")
             
             # Merge all salesperson metrics
             sp_metrics = sp_service.merge(sp_travel, on="sales_id", how="outer")
@@ -1161,11 +1194,11 @@ elif page == "📈 Executive Visualization & Analytics":
             
             work_summary = sp_metrics.rename(columns={
                 "sales_id": "Salesperson ID",
-                "service_min": "Total Service Time (min)",
-                "travel_min": "Total Travel Time (min)",
-                "total_workload": "Total Workload (min)",
-                "distance_km": "Total Distance (km)",
-                "visits": "Scheduled Visits"
+                "service_min": "Total Service Time (min)" if is_cumulative else "Service Time (min)",
+                "travel_min": "Total Travel Time (min)" if is_cumulative else "Travel Time (min)",
+                "total_workload": "Total Workload (min)" if is_cumulative else "Workload (min)",
+                "distance_km": "Total Distance (km)" if is_cumulative else "Distance (km)",
+                "visits": "Scheduled Visits" if is_cumulative else "Visits"
             }).set_index("Salesperson ID")
             
             st.write("### 🧑‍✈️ Multi-Dimensional Salesperson Performance Dashboard")
@@ -1177,8 +1210,8 @@ elif page == "📈 Executive Visualization & Analytics":
                     shared_xaxes=True,
                     vertical_spacing=0.15,
                     subplot_titles=(
-                        "⏳ Cumulative Monthly Time Allocation (Minutes)",
-                        "📈 Route Density (Visits Scheduled) vs. Total Travel Distance (km)"
+                        f"⏳ Time Allocation ({'Cumulative Monthly' if is_cumulative else selected_date_opt}) (Minutes)",
+                        f"📈 Route Density (Visits Scheduled) vs. Travel Distance ({'Cumulative' if is_cumulative else selected_date_opt}) (km)"
                     ),
                     specs=[[{"secondary_y": False}], [{"secondary_y": True}]]
                 )
@@ -1246,9 +1279,15 @@ elif page == "📈 Executive Visualization & Analytics":
                 fig_sp.update_layout(
                     height=700,
                     barmode="group",
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                    legend=dict(
+                        orientation="v",
+                        yanchor="top",
+                        y=1.02,
+                        xanchor="left",
+                        x=1.02
+                    ),
                     template="plotly_white",
-                    margin=dict(t=30, b=30, l=30, r=30)
+                    margin=dict(t=50, b=30, l=30, r=150)
                 )
 
                 fig_sp.update_yaxes(title_text="Minutes", row=1, col=1)
@@ -1299,15 +1338,33 @@ elif page == "📈 Executive Visualization & Analytics":
                         yaxis="y2"
                     )
                 )
+                
+                # Highlight selected day in the daily trend chart
+                if not is_cumulative:
+                    fig_daily.add_vline(
+                        x=selected_date_opt,
+                        line_width=3,
+                        line_dash="dash",
+                        line_color="green",
+                        annotation_text="Selected Date",
+                        annotation_position="top right"
+                    )
+                    
                 fig_daily.update_layout(
                     title="Daily Workload Distribution (Visits vs Distance)",
                     yaxis=dict(title="Scheduled Visits"),
                     yaxis2=dict(title="Distance (km)", overlaying="y", side="right"),
                     xaxis=dict(title="Date", tickangle=-45),
-                    legend=dict(orientation="h", y=1.1, x=0),
+                    legend=dict(
+                        orientation="v",
+                        yanchor="top",
+                        y=1.02,
+                        xanchor="left",
+                        x=1.02
+                    ),
                     template="plotly_white",
                     height=400,
-                    margin=dict(t=40, b=30, l=30, r=30)
+                    margin=dict(t=50, b=30, l=30, r=150)
                 )
                 st.plotly_chart(fig_daily, use_container_width=True)
             else:
@@ -1325,9 +1382,11 @@ elif page == "📈 Executive Visualization & Analytics":
                         hole=.5,
                         marker_colors=["#10B981", "#EF4444"]
                     )])
+                    title_cov = "🎯 Active Store Coverage Ratio" if is_cumulative else f"🎯 Store Coverage on {selected_date_opt}"
+                    pct_text = f"{visited_custs/total_custs*100:.1f}%" if total_custs > 0 else "0%"
                     fig_coverage.update_layout(
-                        title="🎯 Active Store Coverage Ratio",
-                        annotations=[dict(text=f"{visited_custs/total_custs*100:.1f}%" if total_custs > 0 else "0%", x=0.5, y=0.5, font_size=20, showarrow=False)],
+                        title=title_cov,
+                        annotations=[dict(text=pct_text, x=0.5, y=0.5, font_size=20, showarrow=False)],
                         showlegend=True,
                         height=350,
                         margin=dict(t=40, b=0, l=0, r=0)
@@ -1341,14 +1400,15 @@ elif page == "📈 Executive Visualization & Analytics":
             with col_p4:
                 if has_plotly:
                     # 4. Visits Allocated by RFM Segment
-                    segment_visits = detailed.groupby("rfm_segment_final").size().reset_index(name="visits")
+                    segment_visits = view_detailed.groupby("rfm_segment_final").size().reset_index(name="visits")
                     fig_seg_visits = go.Figure(data=[go.Bar(
                         x=segment_visits["rfm_segment_final"],
                         y=segment_visits["visits"],
                         marker_color=["#10B981", "#3B82F6", "#F5A623", "#EF4444"][:len(segment_visits)]
                     )])
+                    title_rfm = "⚡ Visits Allocated by Customer RFM Segment" if is_cumulative else f"⚡ Visits by RFM Segment on {selected_date_opt}"
                     fig_seg_visits.update_layout(
-                        title="⚡ Visits Allocated by Customer RFM Segment",
+                        title=title_rfm,
                         xaxis_title="RFM Segment",
                         yaxis_title="Scheduled Visits",
                         template="plotly_white",
@@ -1357,12 +1417,14 @@ elif page == "📈 Executive Visualization & Analytics":
                     )
                     st.plotly_chart(fig_seg_visits, use_container_width=True)
                 else:
-                    st.write("##### ⚡ Visits Allocated by Customer RFM Segment")
-                    segment_visits = detailed.groupby("rfm_segment_final").size()
+                    title_rfm = "##### ⚡ Visits Allocated by Customer RFM Segment" if is_cumulative else f"##### ⚡ Visits by RFM Segment on {selected_date_opt}"
+                    st.write(title_rfm)
+                    segment_visits = view_detailed.groupby("rfm_segment_final").size()
                     st.bar_chart(segment_visits, use_container_width=True)
                     
             st.markdown("---")
-            st.write("### 🧑‍✈️ Salesperson Workload Table")
+            table_title = "### 🧑‍✈️ Salesperson Workload Table" if is_cumulative else f"### 🧑‍✈️ Salesperson Workload Table for {selected_date_opt}"
+            st.write(table_title)
             st.dataframe(work_summary, use_container_width=True)
 
 # ------------------------------------------------------------
@@ -1407,6 +1469,16 @@ elif page == "⚙️ Global Configuration Settings":
                 cap_med = st.number_input("Medium segment visits cap", value=int(float(cfg_dict.get("segment_cap_medium", 6))))
             with col3:
                 cap_low = st.number_input("Low segment visits cap", value=int(float(cfg_dict.get("segment_cap_low", 4))))
+
+            # OSRM Router Configurations
+            st.write("##### 🛣️ OSRM Router Configurations")
+            osrm_mode_opt = ["haversine", "http", "native"]
+            curr_mode = str(cfg_dict.get("osrm_routing_mode", "haversine")).lower()
+            default_mode_idx = osrm_mode_opt.index(curr_mode) if curr_mode in osrm_mode_opt else 0
+            osrm_mode = st.radio("OSRM Routing Mode", osrm_mode_opt, index=default_mode_idx, horizontal=True)
+            
+            osrm_url = st.text_input("OSRM Server URL (HTTP Mode)", value=str(cfg_dict.get("osrm_server_url", "http://router.project-osrm.org")))
+            osrm_path = st.text_input("OSRM Dataset Path (Native Mode)", value=str(cfg_dict.get("osrm_data_path", "")))
                 
             submitted = st.form_submit_button("💾 Save Settings (CSV & jp_data.xlsx)")
             
@@ -1422,7 +1494,10 @@ elif page == "⚙️ Global Configuration Settings":
                     {"config_key": "ramadan_shift_start_time", "config_value": str(ramadan_start)},
                     {"config_key": "segment_cap_high", "config_value": str(cap_high)},
                     {"config_key": "segment_cap_medium", "config_value": str(cap_med)},
-                    {"config_key": "segment_cap_low", "config_value": str(cap_low)}
+                    {"config_key": "segment_cap_low", "config_value": str(cap_low)},
+                    {"config_key": "osrm_routing_mode", "config_value": str(osrm_mode)},
+                    {"config_key": "osrm_server_url", "config_value": str(osrm_url)},
+                    {"config_key": "osrm_data_path", "config_value": str(osrm_path)}
                 ])
                 save_config_csv(new_cfg)
                 
@@ -1431,7 +1506,7 @@ elif page == "⚙️ Global Configuration Settings":
                 scheduler_final.SEG_CAPS = {"High": cap_high, "Medium": cap_med, "Low": cap_low}
                 
                 # Save success message in session state and rerun
-                st.session_state["config_save_success"] = f"Configurations persistently saved! Solver runtime caps updated: High={cap_high}, Med={cap_med}, Low={cap_low}"
+                st.session_state["config_save_success"] = f"Configurations persistently saved! Router mode={osrm_mode}, caps: High={cap_high}, Med={cap_med}, Low={cap_low}"
                 st.rerun()
                 
     with tab2:

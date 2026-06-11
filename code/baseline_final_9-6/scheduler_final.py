@@ -57,7 +57,7 @@ from ortools.sat.python import cp_model
 from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
 
-SEG_CAPS = {"High": 15, "Medium": 6, "Low": 4}
+SEG_CAPS = {"High": 20, "Medium": 11, "Low": 5}
 DEFAULT_SEG_CAPS = {"High": 4, "Medium": 2, "Low": 1}
 MIN_VISIT = 1
 DEFAULT_DAILY_WORK_MINUTES = 480
@@ -1037,6 +1037,9 @@ class TerritoryScheduler:
                     )
             
             # Constraints
+            # NOTE: There is NO single-salesperson assignment lock constraint here.
+            # This allows multiple salespeople to be assigned to and visit the same customer
+            # on different days during the month (multi-salesperson coverage enabled).
             for customer_id in customer_ids:
                 for salesman_id in salesman_ids:
                     for date in valid_dates:
