@@ -38,8 +38,17 @@ assests
 *.docx
 *.xls
 
+.pyc
 __pycache__
+.txt
+.zip
+.doc
+.docx
+.png
+.jpg
+.jpeg
 
+solver_log.txt
 greedy_output/
 jp_data_output/
 output/
