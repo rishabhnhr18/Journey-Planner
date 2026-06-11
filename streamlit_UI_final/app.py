@@ -49,7 +49,7 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 # PAGE SETUP & STYLING
 # ------------------------------------------------------------
 st.set_page_config(
-    page_title="DelivIQ | Premium Saudi Journey Planner",
+    page_title="Deliv Intellect",
     page_icon="DQ",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -904,7 +904,7 @@ if _LOGO_PATH:
 else:
     st.sidebar.info("Add a logo at `assets/logo.png` to display it here.")
 
-st.sidebar.title("DelivIQ Intellect")
+st.sidebar.title("Deliv Intellect")
 st.sidebar.caption("Journey Planner & Route Optimization Control Room")
 st.sidebar.markdown("---")
 
