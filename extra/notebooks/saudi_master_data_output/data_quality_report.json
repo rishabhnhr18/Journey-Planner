@@ -1,0 +1,47 @@
+{
+  "row_counts": {
+    "territory": 3,
+    "salesperson": 9,
+    "van": 12,
+    "customer": 300,
+    "holiday": 98,
+    "config": 10,
+    "rfm_scores": 300
+  },
+  "customer_tiers_by_territory": {
+    "TER_DMM": {
+      "HIGH": 20,
+      "LOW": 50,
+      "MED": 30
+    },
+    "TER_JED": {
+      "HIGH": 20,
+      "LOW": 50,
+      "MED": 30
+    },
+    "TER_RUH": {
+      "HIGH": 20,
+      "LOW": 50,
+      "MED": 30
+    }
+  },
+  "lifecycle_distribution": {
+    "Active": 0.65,
+    "New": 0.123,
+    "At Risk": 0.12,
+    "Dormant": 0.103,
+    "Churned": 0.003
+  },
+  "payment_type_distribution": {
+    "cash": 0.637,
+    "credit": 0.363
+  },
+  "cold_truck_required_share": 0.523,
+  "rfm_segments": {
+    "Medium": 132,
+    "High": 91,
+    "Low": 77
+  },
+  "validation_status": "passed",
+  "generated_at": "2026-05-29T10:16:19"
+}

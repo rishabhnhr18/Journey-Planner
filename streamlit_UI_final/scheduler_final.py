@@ -1954,7 +1954,7 @@ def export_stop_to_stop_excel(
     result,
     territory_id:  str,
     schedule_date,
-    filepath:      str = r"streamlit_UI_final\jp_data_output\stop_to_stop_distances.xlsx",
+    filepath:      str = r"jp_data_output\stop_to_stop_distances.xlsx",
 ):
     """
     Excel workbook — one sheet per salesperson, one row per route leg.
@@ -2055,7 +2055,7 @@ def export_stop_to_stop_excel(
 
 def export_under_visited_excel(
     result,
-    filepath: str = r"streamlit_UI_final\jp_data_output\under_visited_customers.xlsx",
+    filepath: str = r"jp_data_output\under_visited_customers.xlsx",
     territory_id: str = None,
 ) -> str:
     """

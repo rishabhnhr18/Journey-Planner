@@ -40,8 +40,9 @@ except ImportError:
 
 # Paths
 # BASE_DIR = os.path.abspath(os.path.join(current_dir, "..", ".."))
-BASE_DIR = r'streamlit_UI_final'
-DATA_DIR = os.path.join(BASE_DIR, "saudi_master_data_output")
+BASE_DIR = r'saudi_master_data_output'
+# DATA_DIR = os.path.join(BASE_DIR, "saudi_master_data_output")
+DATA_DIR =  r'saudi_master_data_output'
 OUTPUT_DIR = os.path.join(BASE_DIR, "jp_data_output")
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)

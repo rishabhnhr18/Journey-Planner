@@ -1,0 +1,17 @@
+config_key,config_value
+avg_speed_kmh,32
+avg_service_time_min,22
+buffer_pct,0.15
+rfm_window_days,90
+credit_outstanding_cap,0.85
+normal_shift_start_time,09:00
+ramadan_shift_start_time,10:00
+segment_cap_high,26
+segment_cap_medium,14
+segment_cap_low,11
+osrm_routing_mode,http
+osrm_server_url,http://router.project-osrm.org
+osrm_data_path,
+salesman_daily_work_minutes,480
+solver_run_time_sec,1200
+require_min_visit,False

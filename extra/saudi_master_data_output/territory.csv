@@ -1,0 +1,4 @@
+territory_id,territory_name,warehouse_lat,warehouse_lng,warehouse_address,center_lat,center_lng,radius_km,default_salesperson,default_van
+TER_RUH,Riyadh Central,24.579,46.8237,"Industrial Area, Riyadh",24.7136,46.6753,25,SAL_RUH_001,VAN_RUH_001
+TER_JED,Jeddah North,21.3429,39.2357,"Al Khomrah Logistics Area, Jeddah",21.5433,39.1728,22,SAL_JED_002,VAN_JED_002
+TER_DMM,Dammam Metro,26.2926,50.1629,"2nd Industrial City, Dammam",26.4207,50.0888,20,SAL_DMM_002,VAN_DMM_002

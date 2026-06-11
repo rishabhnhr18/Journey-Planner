@@ -1,0 +1,301 @@
+customer_id,shop_name,gps_lat,gps_lng,locality,territory_id,customer_rating,review_rating,shop_category,cold_truck_required,volume_tier,payment_type,credit_limit,outstanding_balance,lifecycle_state,acquisition_date,preferred_visit_day,preferred_order_window
+CUS_RUH_0001,Al Riyadh Hittin Restaurant,24.769194,46.600485,Hittin,TER_RUH,5,4.4,Restaurant,False,MED,cash,0.0,0.0,Active,2023-10-14,Tuesday,Midday
+CUS_RUH_0002,Al Shehri Mini Market,24.728651,46.671697,Olaya,TER_RUH,2,3.9,Mini Market,False,HIGH,credit,95539.22,27723.36,New,2021-10-31,Tuesday,Afternoon
+CUS_RUH_0003,Al Qahtani Trading Hotel Kitchen,24.729284,46.684113,Olaya,TER_RUH,5,3.7,Hotel Kitchen,False,HIGH,cash,0.0,0.0,Active,2026-04-04,Tuesday,Morning
+CUS_RUH_0004,Al Qahtani Trading Meat Shop,24.67371,46.729357,Al Malaz,TER_RUH,5,3.7,Butchery,True,LOW,cash,0.0,0.0,Active,2023-01-27,Sunday,Morning
+CUS_RUH_0005,Al Shammari Food Store,24.766325,46.578472,Hittin,TER_RUH,2,3.1,Grocery,False,LOW,cash,0.0,0.0,New,2021-11-10,Sunday,Morning
+CUS_RUH_0006,Al Safa Fresh Grill,24.757268,46.589639,Hittin,TER_RUH,4,4.2,Restaurant,False,MED,credit,42955.86,9489.06,Active,2025-06-04,Monday,Morning
+CUS_RUH_0007,Al Sulaymaniyah Cafe,24.690975,46.693694,Al Sulaymaniyah,TER_RUH,5,4.8,Cafe,False,MED,cash,0.0,0.0,Active,2021-10-27,Wednesday,Morning
+CUS_RUH_0008,Al Shammari Trading Sweets & Bakery,24.761057,46.603037,Hittin,TER_RUH,5,3.2,Bakery,False,LOW,cash,0.0,0.0,Active,2025-05-09,Monday,Afternoon
+CUS_RUH_0009,Al Rawabi Hotel Kitchen,24.75747,46.603576,Hittin,TER_RUH,4,3.4,Hotel Kitchen,False,LOW,cash,0.0,0.0,Active,2022-04-13,Monday,Midday
+CUS_RUH_0010,Al Noor Sweets & Bakery,24.767831,46.594751,Hittin,TER_RUH,2,3.8,Bakery,False,MED,credit,32198.33,16774.88,Active,2025-09-25,Sunday,Afternoon
+CUS_RUH_0011,Al Manar Al Sulaymaniyah Cold Store,24.694424,46.73416,Al Sulaymaniyah,TER_RUH,4,4.0,Cold Store,True,LOW,cash,0.0,0.0,Active,2024-06-20,Saturday,Midday
+CUS_RUH_0012,Al Tazaj Fresh Butchery,24.751689,46.612401,Hittin,TER_RUH,3,3.3,Butchery,True,MED,credit,20789.04,13068.88,Active,2026-04-25,Tuesday,Afternoon
+CUS_RUH_0013,Al Baraka Restaurant,24.669952,46.710816,Al Malaz,TER_RUH,5,3.3,Restaurant,False,MED,cash,0.0,0.0,Dormant,2023-04-10,Tuesday,Afternoon
+CUS_RUH_0014,Al Ghamdi Trading Corner Market,24.669817,46.744251,Al Malaz,TER_RUH,1,4.1,Mini Market,False,LOW,cash,0.0,0.0,Active,2026-01-04,Sunday,Morning
+CUS_RUH_0015,Al Waha Fresh Meat,24.710198,46.670867,Olaya,TER_RUH,5,3.2,Butchery,True,HIGH,credit,107791.76,36656.39,New,2022-11-15,Sunday,Afternoon
+CUS_RUH_0016,Al Shammari Trading Banquet Kitchen,24.693094,46.70549,Al Sulaymaniyah,TER_RUH,4,4.6,Catering Kitchen,False,MED,credit,35499.08,5115.53,Active,2025-12-06,Wednesday,Afternoon
+CUS_RUH_0017,Al Rawabi Baqala,24.67147,46.713252,Al Malaz,TER_RUH,5,4.2,Mini Market,False,MED,cash,0.0,0.0,Active,2023-02-04,Wednesday,Midday
+CUS_RUH_0018,Al Anazi Roastery,24.822763,46.621801,Al Yasmin,TER_RUH,3,4.3,Cafe,False,LOW,cash,0.0,0.0,Active,2023-02-05,Tuesday,Afternoon
+CUS_RUH_0019,Al Madina Grill,24.72311,46.686145,Olaya,TER_RUH,4,3.5,Restaurant,False,MED,credit,30299.47,7466.14,Active,2025-02-17,Thursday,Afternoon
+CUS_RUH_0020,Al Saleh Restaurant,24.697718,46.715306,Al Sulaymaniyah,TER_RUH,5,4.5,Restaurant,False,HIGH,credit,50217.66,5510.83,Active,2023-07-25,Tuesday,Midday
+CUS_RUH_0021,Al Malki Grocery,24.662204,46.732799,Al Malaz,TER_RUH,5,3.4,Grocery,False,HIGH,cash,0.0,0.0,Active,2025-04-24,Wednesday,Midday
+CUS_RUH_0022,Al Tazaj Fresh Baqala,24.698029,46.684672,Olaya,TER_RUH,5,4.7,Mini Market,False,LOW,cash,0.0,0.0,Active,2023-11-22,Wednesday,Afternoon
+CUS_RUH_0023,Al Rashid Hospitality Supplies,24.762789,46.614645,Hittin,TER_RUH,3,4.2,Hotel Kitchen,False,LOW,cash,0.0,0.0,Active,2022-12-18,Wednesday,Midday
+CUS_RUH_0024,Al Baraka Corner Market,24.660335,46.739578,Al Malaz,TER_RUH,3,4.8,Mini Market,False,LOW,cash,0.0,0.0,Active,2022-09-15,Tuesday,Afternoon
+CUS_RUH_0025,Al Dossari Corner Market,24.667197,46.754489,Al Malaz,TER_RUH,3,2.6,Mini Market,False,LOW,cash,0.0,0.0,New,2023-08-05,Wednesday,Afternoon
+CUS_RUH_0026,Al Qahtani Banquet Kitchen,24.720756,46.675679,Olaya,TER_RUH,5,3.8,Catering Kitchen,False,HIGH,credit,30530.65,22698.54,At Risk,2022-12-09,Tuesday,Midday
+CUS_RUH_0027,Al Manar Butchery,24.712533,46.649961,Olaya,TER_RUH,5,3.9,Butchery,True,LOW,cash,0.0,0.0,Active,2024-09-23,Wednesday,Afternoon
+CUS_RUH_0028,Al Subaie Trading Meat Shop,24.715522,46.692921,Olaya,TER_RUH,5,3.7,Butchery,True,LOW,credit,8002.08,520.82,Active,2021-11-13,Tuesday,Morning
+CUS_RUH_0029,Al Rashid Oven,24.754495,46.595977,Hittin,TER_RUH,5,4.5,Bakery,False,MED,credit,12401.64,4181.66,Active,2022-01-19,Wednesday,Morning
+CUS_RUH_0030,Al Saleh Trading Bakery,24.830802,46.623627,Al Yasmin,TER_RUH,2,4.3,Bakery,False,MED,credit,31253.66,32120.03,New,2022-07-10,Saturday,Afternoon
+CUS_RUH_0031,Al Qassim Cafe,24.668693,46.747104,Al Malaz,TER_RUH,4,3.6,Cafe,False,LOW,cash,0.0,0.0,Active,2023-10-24,Thursday,Midday
+CUS_RUH_0032,Al Nada Fresh Bakery,24.70781,46.669739,Olaya,TER_RUH,4,3.2,Bakery,False,LOW,credit,7460.76,3743.31,Active,2024-06-05,Tuesday,Midday
+CUS_RUH_0033,Al Malki Trading Catering Kitchen,24.830435,46.633439,Al Yasmin,TER_RUH,5,4.0,Catering Kitchen,False,LOW,cash,0.0,0.0,At Risk,2024-01-06,Wednesday,Afternoon
+CUS_RUH_0034,Al Qassim Fresh Cold Store,24.824458,46.612638,Al Yasmin,TER_RUH,3,3.8,Cold Store,True,LOW,cash,0.0,0.0,Active,2024-10-01,Thursday,Midday
+CUS_RUH_0035,Al Rashid Restaurant,24.759741,46.59225,Hittin,TER_RUH,4,3.9,Restaurant,False,HIGH,credit,94806.72,18636.47,Active,2024-09-02,Monday,Midday
+CUS_RUH_0036,Al Madina Fresh Meat Shop,24.76815,46.625592,Hittin,TER_RUH,4,4.1,Butchery,True,LOW,cash,0.0,0.0,Active,2022-09-14,Saturday,Afternoon
+CUS_RUH_0037,Al Saleh Trading Hotel Kitchen,24.6705,46.734177,Al Malaz,TER_RUH,4,2.9,Hotel Kitchen,False,LOW,cash,0.0,0.0,Active,2024-09-18,Wednesday,Afternoon
+CUS_RUH_0038,Al Khaleej Restaurant,24.700901,46.711947,Al Sulaymaniyah,TER_RUH,4,5.0,Restaurant,False,MED,credit,22630.84,18577.82,Churned,2025-04-27,Sunday,Afternoon
+CUS_RUH_0039,Al Madina Baqala,24.824934,46.633942,Al Yasmin,TER_RUH,4,4.0,Grocery,False,LOW,cash,0.0,0.0,Active,2024-02-02,Saturday,Morning
+CUS_RUH_0040,Al Waha Fresh Catering Kitchen,24.813939,46.64438,Al Yasmin,TER_RUH,2,4.4,Catering Kitchen,False,LOW,cash,0.0,0.0,Active,2022-01-27,Wednesday,Midday
+CUS_RUH_0041,Al Tazaj Catering Kitchen,24.772508,46.590922,Hittin,TER_RUH,3,4.8,Catering Kitchen,False,HIGH,credit,77031.53,80426.05,Active,2024-12-01,Sunday,Midday
+CUS_RUH_0042,Al Rashid Trading Hyper Mini,24.695713,46.681875,Olaya,TER_RUH,3,5.0,Supermarket,False,HIGH,credit,44087.94,7607.61,Active,2022-09-20,Monday,Afternoon
+CUS_RUH_0043,Al Jazeera Fresh Kitchen,24.752445,46.595177,Hittin,TER_RUH,3,4.1,Restaurant,False,MED,credit,29059.68,7099.0,New,2024-01-14,Thursday,Midday
+CUS_RUH_0044,Al Nada Fresh Hotel Kitchen,24.82143,46.610959,Al Yasmin,TER_RUH,4,4.0,Hotel Kitchen,False,MED,cash,0.0,0.0,Dormant,2021-07-21,Saturday,Morning
+CUS_RUH_0045,Al Shammari Baqala,24.751637,46.608073,Hittin,TER_RUH,4,3.5,Grocery,False,MED,cash,0.0,0.0,Active,2025-01-23,Tuesday,Midday
+CUS_RUH_0046,Al Zahrani Trading Butchery,24.685054,46.725394,Al Malaz,TER_RUH,4,3.8,Butchery,True,LOW,cash,0.0,0.0,Churned,2025-03-02,Saturday,Morning
+CUS_RUH_0047,Al Nakheel Frozen Foods,24.710361,46.695943,Al Sulaymaniyah,TER_RUH,3,4.1,Cold Store,True,HIGH,credit,115067.42,33837.85,Active,2024-06-14,Tuesday,Midday
+CUS_RUH_0048,Al Shammari Sweets & Bakery,24.72622,46.654673,Olaya,TER_RUH,4,4.1,Bakery,False,LOW,cash,0.0,0.0,Active,2022-02-22,Monday,Midday
+CUS_RUH_0049,Al Qahtani Trading Banquet Kitchen,24.830027,46.639901,Al Yasmin,TER_RUH,4,3.3,Catering Kitchen,False,HIGH,cash,0.0,0.0,Active,2026-02-16,Saturday,Midday
+CUS_RUH_0050,Al Mutairi Trading Market,24.69663,46.68107,Olaya,TER_RUH,4,4.2,Supermarket,False,MED,cash,0.0,0.0,Active,2024-01-22,Sunday,Midday
+CUS_RUH_0051,Al Tazaj Fresh Restaurant,24.766421,46.606497,Hittin,TER_RUH,4,3.6,Restaurant,False,MED,cash,0.0,0.0,Active,2026-03-14,Tuesday,Midday
+CUS_RUH_0052,Al Harbi Trading Food Store,24.766215,46.605835,Hittin,TER_RUH,3,3.6,Grocery,False,LOW,cash,0.0,0.0,Active,2023-11-30,Wednesday,Midday
+CUS_RUH_0053,Al Jazeera Al Sulaymaniyah Hospitality Supplies,24.722211,46.717073,Al Sulaymaniyah,TER_RUH,5,3.3,Hotel Kitchen,False,HIGH,credit,113956.7,35426.92,Active,2025-12-16,Tuesday,Midday
+CUS_RUH_0054,Al Rashid Trading Grocery,24.674994,46.723022,Al Malaz,TER_RUH,5,4.4,Grocery,False,MED,credit,43787.38,6550.52,Active,2022-04-11,Saturday,Midday
+CUS_RUH_0055,Al Rashid Trading Fresh Meat,24.714247,46.701027,Al Sulaymaniyah,TER_RUH,5,4.5,Butchery,True,LOW,cash,0.0,0.0,Active,2025-06-09,Tuesday,Afternoon
+CUS_RUH_0056,Al Manar Fresh Restaurant,24.716148,46.684791,Olaya,TER_RUH,4,5.0,Restaurant,False,HIGH,credit,112883.62,39422.1,Active,2021-09-01,Monday,Morning
+CUS_RUH_0057,Al Anazi Trading Fresh Meat,24.698437,46.701857,Al Sulaymaniyah,TER_RUH,5,3.5,Butchery,True,HIGH,credit,77804.97,17099.85,Active,2022-03-19,Sunday,Midday
+CUS_RUH_0058,Al Mutairi Baqala,24.692013,46.710244,Al Sulaymaniyah,TER_RUH,4,4.2,Grocery,False,LOW,cash,0.0,0.0,Active,2023-05-07,Wednesday,Midday
+CUS_RUH_0059,Al Safa Frozen Foods,24.830216,46.640464,Al Yasmin,TER_RUH,3,4.0,Cold Store,True,LOW,cash,0.0,0.0,New,2024-08-13,Monday,Afternoon
+CUS_RUH_0060,Al Manar Roastery,24.717569,46.707919,Al Sulaymaniyah,TER_RUH,1,5.0,Cafe,False,LOW,credit,12790.49,10978.36,Churned,2025-08-03,Tuesday,Midday
+CUS_RUH_0061,Al Othman Sweets & Bakery,24.674646,46.724478,Al Malaz,TER_RUH,3,3.4,Bakery,False,LOW,cash,0.0,0.0,Active,2024-12-05,Thursday,Morning
+CUS_RUH_0062,Al Rawabi Fresh Grocery,24.706633,46.70843,Al Sulaymaniyah,TER_RUH,4,4.4,Grocery,False,MED,cash,0.0,0.0,At Risk,2022-05-24,Sunday,Morning
+CUS_RUH_0063,Al Ghamdi Trading Bakery,24.768929,46.601297,Hittin,TER_RUH,5,3.5,Bakery,False,LOW,cash,0.0,0.0,At Risk,2025-08-05,Monday,Morning
+CUS_RUH_0064,Al Malki Trading Market,24.810041,46.62466,Al Yasmin,TER_RUH,3,4.5,Supermarket,False,LOW,cash,0.0,0.0,Dormant,2024-07-14,Monday,Morning
+CUS_RUH_0065,Al Manar Fresh Hotel Kitchen,24.829511,46.614743,Al Yasmin,TER_RUH,3,4.1,Hotel Kitchen,False,HIGH,credit,63172.71,17353.76,Active,2022-08-26,Thursday,Morning
+CUS_RUH_0066,Al Jazeera Fresh Cafe,24.831439,46.619233,Al Yasmin,TER_RUH,2,4.1,Cafe,False,LOW,cash,0.0,0.0,Dormant,2021-12-15,Sunday,Afternoon
+CUS_RUH_0067,Al Dossari Oven,24.668256,46.720936,Al Malaz,TER_RUH,4,4.2,Bakery,False,MED,cash,0.0,0.0,Active,2025-01-30,Saturday,Midday
+CUS_RUH_0068,Al Noor Fresh Roastery,24.769915,46.615632,Hittin,TER_RUH,4,4.6,Cafe,False,LOW,credit,6816.89,1247.59,Active,2022-12-16,Sunday,Morning
+CUS_RUH_0069,Al Safa Fresh Restaurant,24.811586,46.618563,Al Yasmin,TER_RUH,4,4.3,Restaurant,False,LOW,cash,0.0,0.0,Active,2025-10-27,Wednesday,Morning
+CUS_RUH_0070,Al Shehri Hotel Kitchen,24.717286,46.680985,Olaya,TER_RUH,3,5.0,Hotel Kitchen,False,LOW,cash,0.0,0.0,At Risk,2024-10-01,Saturday,Midday
+CUS_RUH_0071,Al Zahrani Hotel Kitchen,24.674029,46.749172,Al Malaz,TER_RUH,1,4.5,Hotel Kitchen,False,MED,credit,16107.4,15534.35,Churned,2021-07-01,Sunday,Midday
+CUS_RUH_0072,Al Khaleej Olaya Fresh Meat,24.718835,46.670692,Olaya,TER_RUH,4,4.4,Butchery,True,HIGH,credit,97109.87,18729.95,Active,2023-12-24,Thursday,Morning
+CUS_RUH_0073,Al Harbi Butchery,24.702797,46.671664,Olaya,TER_RUH,4,3.7,Butchery,True,MED,credit,13778.66,13571.44,Churned,2022-12-14,Wednesday,Afternoon
+CUS_RUH_0074,Al Malki Trading Sweets & Bakery,24.764522,46.630906,Hittin,TER_RUH,4,3.0,Bakery,False,LOW,cash,0.0,0.0,Active,2025-05-06,Saturday,Afternoon
+CUS_RUH_0075,Al Baraka Fresh Kitchen,24.771328,46.5822,Hittin,TER_RUH,3,3.7,Restaurant,False,MED,credit,41083.19,26276.67,New,2024-01-26,Saturday,Morning
+CUS_RUH_0076,Al Shehri Trading Corner Market,24.723763,46.675397,Olaya,TER_RUH,4,3.4,Mini Market,False,HIGH,credit,63538.22,5657.1,Active,2025-06-14,Saturday,Midday
+CUS_RUH_0077,Al Qassim Baqala,24.755545,46.610628,Hittin,TER_RUH,3,3.6,Mini Market,False,LOW,cash,0.0,0.0,Active,2024-07-12,Monday,Morning
+CUS_RUH_0078,Al Nada Fresh Meat,24.703638,46.711765,Al Sulaymaniyah,TER_RUH,5,3.6,Butchery,True,MED,cash,0.0,0.0,Active,2025-02-05,Thursday,Midday
+CUS_RUH_0079,Al Harbi Trading Cafe,24.735644,46.682458,Olaya,TER_RUH,3,2.9,Cafe,False,LOW,cash,0.0,0.0,Active,2025-07-25,Thursday,Morning
+CUS_RUH_0080,Olaya Restaurant,24.7136,46.666396,Olaya,TER_RUH,4,4.5,Restaurant,False,MED,credit,25877.6,21472.02,New,2021-11-13,Monday,Midday
+CUS_RUH_0081,Al Safa Chilled Foods,24.818175,46.628776,Al Yasmin,TER_RUH,4,4.3,Cold Store,True,HIGH,credit,49401.21,23258.61,Active,2024-10-08,Saturday,Morning
+CUS_RUH_0082,Al Jazeera Kitchen,24.677349,46.720226,Al Malaz,TER_RUH,5,3.8,Restaurant,False,LOW,cash,0.0,0.0,Active,2023-10-28,Sunday,Morning
+CUS_RUH_0083,Al Noor Al Yasmin Kitchen,24.821752,46.622093,Al Yasmin,TER_RUH,5,5.0,Restaurant,False,MED,cash,0.0,0.0,Active,2021-07-07,Tuesday,Morning
+CUS_RUH_0084,Al Qassim Banquet Kitchen,24.705761,46.695571,Al Sulaymaniyah,TER_RUH,4,4.5,Catering Kitchen,False,LOW,cash,0.0,0.0,Active,2025-11-26,Wednesday,Midday
+CUS_RUH_0085,Al Waha Al Sulaymaniyah Mini Market,24.725098,46.723998,Al Sulaymaniyah,TER_RUH,3,3.2,Mini Market,False,MED,credit,30610.5,6342.15,Active,2024-04-08,Sunday,Midday
+CUS_RUH_0086,Al Malki Supermarket,24.695747,46.726904,Al Sulaymaniyah,TER_RUH,2,3.6,Supermarket,False,LOW,cash,0.0,0.0,New,2025-01-31,Saturday,Morning
+CUS_RUH_0087,Al Baraka Fresh Banquet Kitchen,24.832098,46.639812,Al Yasmin,TER_RUH,4,3.5,Catering Kitchen,False,MED,cash,0.0,0.0,Active,2021-10-16,Tuesday,Midday
+CUS_RUH_0088,Al Nada Catering Kitchen,24.70053,46.671023,Al Sulaymaniyah,TER_RUH,4,3.4,Catering Kitchen,False,LOW,credit,8595.38,6194.9,At Risk,2024-04-02,Tuesday,Midday
+CUS_RUH_0089,Al Qahtani Grocery,24.760756,46.586725,Hittin,TER_RUH,2,4.9,Grocery,False,MED,credit,38343.56,9415.31,Active,2025-05-18,Tuesday,Midday
+CUS_RUH_0090,Al Nakheel Fresh Hyper Mini,24.747495,46.596743,Hittin,TER_RUH,5,4.1,Supermarket,False,LOW,cash,0.0,0.0,Active,2021-09-14,Thursday,Afternoon
+CUS_RUH_0091,Al Othman Corner Market,24.717431,46.693402,Al Sulaymaniyah,TER_RUH,3,4.6,Mini Market,False,LOW,cash,0.0,0.0,Active,2024-09-04,Thursday,Morning
+CUS_RUH_0092,Al Nakheel Fresh Meat,24.701315,46.699034,Al Sulaymaniyah,TER_RUH,2,4.3,Butchery,True,HIGH,credit,93795.06,7073.62,Active,2023-10-14,Wednesday,Midday
+CUS_RUH_0093,Al Othman Hyper Mini,24.713742,46.667159,Olaya,TER_RUH,3,4.0,Supermarket,False,LOW,cash,0.0,0.0,Active,2023-01-25,Saturday,Afternoon
+CUS_RUH_0094,Al Saleh Hospitality Supplies,24.759261,46.603608,Hittin,TER_RUH,2,4.4,Hotel Kitchen,False,LOW,credit,6377.94,6195.97,At Risk,2025-09-25,Wednesday,Morning
+CUS_RUH_0095,Al Subaie Trading Sweets & Bakery,24.844961,46.614841,Al Yasmin,TER_RUH,4,5.0,Bakery,False,HIGH,credit,51377.72,9415.46,Active,2022-07-01,Monday,Afternoon
+CUS_RUH_0096,Al Qahtani Chilled Foods,24.741617,46.600318,Hittin,TER_RUH,5,4.3,Cold Store,True,LOW,cash,0.0,0.0,Churned,2025-11-25,Wednesday,Morning
+CUS_RUH_0097,Al Madina Cold Store,24.704364,46.703481,Al Sulaymaniyah,TER_RUH,4,3.9,Cold Store,True,MED,cash,0.0,0.0,Active,2025-09-08,Sunday,Midday
+CUS_RUH_0098,Al Manar Fresh Supermarket,24.821548,46.622887,Al Yasmin,TER_RUH,2,4.5,Supermarket,False,LOW,cash,0.0,0.0,Dormant,2023-09-26,Saturday,Midday
+CUS_RUH_0099,Al Dana Butchery,24.76762,46.593607,Hittin,TER_RUH,3,4.5,Butchery,True,LOW,cash,0.0,0.0,Active,2025-01-20,Monday,Morning
+CUS_RUH_0100,Al Manar Chilled Foods,24.671061,46.745173,Al Malaz,TER_RUH,2,4.3,Cold Store,True,LOW,cash,0.0,0.0,Active,2021-07-07,Monday,Morning
+CUS_JED_0001,Al Tazaj Fresh Sweets & Bakery,21.576064,39.211316,Al Safa,TER_JED,4,4.4,Bakery,False,HIGH,credit,66001.96,12007.14,Active,2025-06-27,Tuesday,Morning
+CUS_JED_0002,Al Madina Fresh Supermarket,21.601674,39.148247,Al Salamah,TER_JED,3,4.1,Supermarket,False,MED,cash,0.0,0.0,Active,2024-10-15,Thursday,Midday
+CUS_JED_0003,Al Riyadh Al Hamra Bakery,21.540588,39.153939,Al Hamra,TER_JED,5,4.3,Bakery,False,MED,credit,35438.5,11463.72,New,2024-04-14,Thursday,Afternoon
+CUS_JED_0004,Al Safa Hyper Mini,21.523923,39.158465,Al Hamra,TER_JED,4,4.6,Supermarket,False,LOW,cash,0.0,0.0,Dormant,2025-01-10,Monday,Midday
+CUS_JED_0005,Al Nada Baqala,21.604095,39.158353,Al Salamah,TER_JED,4,4.7,Grocery,False,MED,cash,0.0,0.0,Dormant,2024-05-18,Monday,Midday
+CUS_JED_0006,Al Shammari Trading Restaurant,21.585637,39.226359,Al Safa,TER_JED,1,3.8,Restaurant,False,MED,cash,0.0,0.0,Active,2022-01-26,Monday,Midday
+CUS_JED_0007,Al Othman Banquet Kitchen,21.598451,39.146924,Al Salamah,TER_JED,5,4.1,Catering Kitchen,False,LOW,cash,0.0,0.0,Active,2023-12-11,Sunday,Afternoon
+CUS_JED_0008,Al Dana Fresh Oven,21.601502,39.13859,Al Salamah,TER_JED,4,5.0,Bakery,False,LOW,cash,0.0,0.0,Churned,2025-05-26,Thursday,Afternoon
+CUS_JED_0009,Al Hamra Hospitality Supplies,21.514871,39.146401,Al Hamra,TER_JED,3,4.6,Hotel Kitchen,False,HIGH,credit,118661.93,116957.48,At Risk,2024-01-12,Wednesday,Morning
+CUS_JED_0010,Al Baraka Corner Market,21.624115,39.14106,Al Zahra,TER_JED,4,4.3,Mini Market,False,HIGH,credit,119963.55,113410.94,At Risk,2025-01-04,Saturday,Midday
+CUS_JED_0011,Al Harbi Bakery,21.594662,39.137633,Al Salamah,TER_JED,4,4.0,Bakery,False,HIGH,credit,104614.84,22533.1,New,2022-04-26,Monday,Afternoon
+CUS_JED_0012,Al Madina Al Hamra Hospitality Supplies,21.518574,39.172904,Al Hamra,TER_JED,5,3.9,Hotel Kitchen,False,HIGH,cash,0.0,0.0,Active,2024-05-26,Saturday,Afternoon
+CUS_JED_0013,Al Tazaj Al Hamra Catering Kitchen,21.516904,39.157209,Al Hamra,TER_JED,5,4.2,Catering Kitchen,False,MED,credit,33055.65,8799.08,Active,2022-11-23,Thursday,Morning
+CUS_JED_0014,Al Jazeera Fresh Baqala,21.608852,39.12354,Al Zahra,TER_JED,4,4.1,Grocery,False,MED,cash,0.0,0.0,Active,2025-12-03,Thursday,Midday
+CUS_JED_0015,Al Zahrani Baqala,21.588159,39.211961,Al Safa,TER_JED,3,3.7,Grocery,False,MED,credit,24546.76,11514.08,Active,2024-04-18,Wednesday,Morning
+CUS_JED_0016,Al Anazi Trading Mini Market,21.588013,39.200563,Al Safa,TER_JED,3,3.2,Mini Market,False,LOW,cash,0.0,0.0,Active,2023-10-03,Sunday,Morning
+CUS_JED_0017,Al Riyadh Sweets & Bakery,21.577309,39.215515,Al Safa,TER_JED,4,4.2,Bakery,False,LOW,credit,4071.45,4469.57,Dormant,2023-12-22,Sunday,Morning
+CUS_JED_0018,Al Khaleej Fresh Food Store,21.631814,39.143889,Al Zahra,TER_JED,4,3.9,Grocery,False,LOW,cash,0.0,0.0,Active,2026-02-28,Saturday,Midday
+CUS_JED_0019,Al Hamra Sweets & Bakery,21.525986,39.148964,Al Hamra,TER_JED,3,4.0,Bakery,False,LOW,cash,0.0,0.0,At Risk,2024-07-06,Monday,Morning
+CUS_JED_0020,Al Tazaj Fresh Hospitality Supplies,21.591549,39.152409,Al Salamah,TER_JED,5,3.5,Hotel Kitchen,False,MED,credit,44618.17,11338.35,Active,2022-07-11,Wednesday,Afternoon
+CUS_JED_0021,Al Saleh Trading Food Store,21.600648,39.167064,Al Salamah,TER_JED,2,3.9,Grocery,False,HIGH,credit,94223.27,50104.77,Active,2026-02-18,Monday,Afternoon
+CUS_JED_0022,Al Qassim Hospitality Supplies,21.589924,39.226458,Al Safa,TER_JED,4,3.8,Hotel Kitchen,False,LOW,cash,0.0,0.0,Active,2025-03-09,Saturday,Midday
+CUS_JED_0023,Al Rajhi Food Store,21.617724,39.133653,Al Zahra,TER_JED,3,4.1,Grocery,False,LOW,cash,0.0,0.0,Active,2024-09-06,Tuesday,Morning
+CUS_JED_0024,Al Waha Al Zahra Catering Kitchen,21.606495,39.133797,Al Zahra,TER_JED,3,4.3,Catering Kitchen,False,LOW,cash,0.0,0.0,Active,2021-07-07,Tuesday,Midday
+CUS_JED_0025,Al Rawabi Kitchen,21.611142,39.160118,Al Salamah,TER_JED,5,5.0,Restaurant,False,LOW,cash,0.0,0.0,Active,2024-04-26,Sunday,Afternoon
+CUS_JED_0026,Al Khaleej Fresh Cold Store,21.576759,39.228664,Al Safa,TER_JED,3,4.1,Cold Store,True,MED,cash,0.0,0.0,Churned,2025-03-14,Thursday,Afternoon
+CUS_JED_0027,Al Tazaj Fresh Kitchen,21.61006,39.208311,Al Safa,TER_JED,3,3.5,Restaurant,False,MED,cash,0.0,0.0,Active,2025-05-12,Sunday,Afternoon
+CUS_JED_0028,Al Rajhi Sweets & Bakery,21.58805,39.122777,Al Salamah,TER_JED,5,3.7,Bakery,False,HIGH,credit,114103.69,30408.56,Active,2023-01-09,Thursday,Morning
+CUS_JED_0029,Al Safa Roastery,21.576851,39.219921,Al Safa,TER_JED,3,4.2,Cafe,False,MED,cash,0.0,0.0,Dormant,2022-03-07,Saturday,Afternoon
+CUS_JED_0030,Al Riyadh Food Store,21.636328,39.145013,Al Zahra,TER_JED,4,3.7,Grocery,False,MED,cash,0.0,0.0,Active,2025-06-07,Tuesday,Morning
+CUS_JED_0031,Al Ghamdi Hospitality Supplies,21.516083,39.167055,Al Hamra,TER_JED,3,3.3,Hotel Kitchen,False,LOW,cash,0.0,0.0,Active,2023-03-18,Monday,Afternoon
+CUS_JED_0032,Al Manar Baqala,21.586225,39.179482,Al Rawdah,TER_JED,3,3.7,Mini Market,False,MED,cash,0.0,0.0,Dormant,2022-05-23,Tuesday,Morning
+CUS_JED_0033,Al Manar Fresh Fresh Meat,21.546308,39.181594,Al Rawdah,TER_JED,3,3.9,Butchery,True,HIGH,cash,0.0,0.0,Churned,2021-06-17,Monday,Afternoon
+CUS_JED_0034,Al Shammari Oven,21.629139,39.114187,Al Zahra,TER_JED,5,3.7,Bakery,False,LOW,cash,0.0,0.0,Active,2024-01-13,Monday,Morning
+CUS_JED_0035,Al Nada Fresh Cold Store,21.565659,39.165769,Al Rawdah,TER_JED,4,3.8,Cold Store,True,LOW,cash,0.0,0.0,Active,2025-08-27,Sunday,Morning
+CUS_JED_0036,Al Baraka Butchery,21.622214,39.120568,Al Zahra,TER_JED,4,3.9,Butchery,True,MED,cash,0.0,0.0,At Risk,2024-02-01,Monday,Morning
+CUS_JED_0037,Al Madina Kitchen,21.566955,39.171429,Al Rawdah,TER_JED,3,4.4,Restaurant,False,LOW,cash,0.0,0.0,Active,2023-06-05,Thursday,Morning
+CUS_JED_0038,Al Rawabi Fresh Chilled Foods,21.552935,39.146624,Al Rawdah,TER_JED,4,4.7,Cold Store,True,LOW,cash,0.0,0.0,New,2024-12-28,Monday,Midday
+CUS_JED_0039,Al Shammari Trading Market,21.618942,39.124434,Al Zahra,TER_JED,4,4.9,Supermarket,False,MED,cash,0.0,0.0,Active,2025-11-27,Thursday,Morning
+CUS_JED_0040,Al Waha Fresh Banquet Kitchen,21.527503,39.175376,Al Hamra,TER_JED,2,4.0,Catering Kitchen,False,LOW,cash,0.0,0.0,New,2024-07-28,Saturday,Morning
+CUS_JED_0041,Al Rashid Trading Kitchen,21.638407,39.154763,Al Zahra,TER_JED,2,3.9,Restaurant,False,LOW,cash,0.0,0.0,Dormant,2022-07-24,Thursday,Afternoon
+CUS_JED_0042,Al Rajhi Trading Hotel Kitchen,21.605741,39.156316,Al Salamah,TER_JED,2,4.8,Hotel Kitchen,False,LOW,cash,0.0,0.0,Active,2024-07-17,Tuesday,Afternoon
+CUS_JED_0043,Al Riyadh Butchery,21.574534,39.226408,Al Safa,TER_JED,1,4.6,Butchery,True,LOW,cash,0.0,0.0,New,2025-05-03,Saturday,Afternoon
+CUS_JED_0044,Al Rashid Corner Market,21.545794,39.150872,Al Rawdah,TER_JED,4,2.9,Mini Market,False,LOW,cash,0.0,0.0,Dormant,2025-07-01,Thursday,Midday
+CUS_JED_0045,Al Subaie Fresh Meat,21.582366,39.22679,Al Safa,TER_JED,2,4.8,Butchery,True,HIGH,credit,112540.36,95771.68,Churned,2023-05-12,Saturday,Morning
+CUS_JED_0046,Al Jazeera Fresh Supermarket,21.616034,39.153228,Al Zahra,TER_JED,3,3.2,Supermarket,False,MED,cash,0.0,0.0,Active,2025-06-10,Wednesday,Midday
+CUS_JED_0047,Al Tazaj Al Zahra Kitchen,21.596018,39.132827,Al Zahra,TER_JED,3,4.2,Restaurant,False,LOW,cash,0.0,0.0,Active,2021-08-03,Thursday,Midday
+CUS_JED_0048,Al Safa Food Store,21.614832,39.108457,Al Zahra,TER_JED,4,4.0,Grocery,False,MED,credit,12355.18,10831.41,At Risk,2021-08-28,Tuesday,Midday
+CUS_JED_0049,Al Shammari Baqala,21.51151,39.169207,Al Hamra,TER_JED,5,4.2,Grocery,False,HIGH,credit,119413.51,14359.29,Active,2022-08-25,Tuesday,Midday
+CUS_JED_0050,Al Qassim Banquet Kitchen,21.574816,39.211877,Al Safa,TER_JED,5,3.4,Catering Kitchen,False,LOW,cash,0.0,0.0,Active,2025-03-04,Tuesday,Afternoon
+CUS_JED_0051,Al Shammari Trading Meat Shop,21.584694,39.229667,Al Safa,TER_JED,4,3.5,Butchery,True,LOW,credit,6893.98,1904.98,New,2024-05-19,Sunday,Midday
+CUS_JED_0052,Al Dana Al Hamra Sweets & Bakery,21.531876,39.154681,Al Hamra,TER_JED,5,3.6,Bakery,False,MED,cash,0.0,0.0,Active,2021-09-12,Monday,Midday
+CUS_JED_0053,Al Othman Mini Market,21.613995,39.12096,Al Zahra,TER_JED,3,3.7,Mini Market,False,LOW,credit,11902.05,6493.73,Active,2025-08-06,Tuesday,Morning
+CUS_JED_0054,Al Madina Fresh Meat Shop,21.60171,39.157299,Al Zahra,TER_JED,4,4.0,Butchery,True,LOW,cash,0.0,0.0,New,2023-06-05,Wednesday,Midday
+CUS_JED_0055,Al Anazi Trading Cold Store,21.58692,39.151092,Al Salamah,TER_JED,3,3.9,Cold Store,True,MED,cash,0.0,0.0,Active,2026-04-03,Sunday,Afternoon
+CUS_JED_0056,Al Qahtani Hospitality Supplies,21.523712,39.168535,Al Hamra,TER_JED,4,4.4,Hotel Kitchen,False,HIGH,cash,0.0,0.0,Active,2023-07-16,Wednesday,Morning
+CUS_JED_0057,Al Salamah Bakery,21.588826,39.141526,Al Salamah,TER_JED,5,3.8,Bakery,False,MED,credit,38755.72,13175.1,Active,2024-06-13,Thursday,Morning
+CUS_JED_0058,Al Saleh Mini Market,21.589277,39.115146,Al Zahra,TER_JED,4,4.8,Mini Market,False,LOW,cash,0.0,0.0,Active,2022-04-04,Saturday,Morning
+CUS_JED_0059,Al Rajhi Trading Food Store,21.633724,39.130483,Al Zahra,TER_JED,4,4.3,Grocery,False,LOW,cash,0.0,0.0,Active,2024-05-23,Wednesday,Midday
+CUS_JED_0060,Al Shehri Trading Roastery,21.569105,39.202482,Al Rawdah,TER_JED,3,4.6,Cafe,False,MED,cash,0.0,0.0,Active,2022-06-01,Saturday,Morning
+CUS_JED_0061,Al Zahrani Trading Kitchen,21.613759,39.121925,Al Zahra,TER_JED,3,3.1,Restaurant,False,MED,cash,0.0,0.0,Active,2023-09-08,Tuesday,Afternoon
+CUS_JED_0062,Al Riyadh Grill,21.528491,39.151944,Al Hamra,TER_JED,5,3.2,Restaurant,False,MED,credit,38982.17,28544.57,Churned,2023-07-11,Wednesday,Midday
+CUS_JED_0063,Al Manar Al Rawdah Supermarket,21.558319,39.152104,Al Rawdah,TER_JED,5,4.9,Supermarket,False,LOW,credit,12989.29,14170.43,Active,2024-01-28,Monday,Morning
+CUS_JED_0064,Al Noor Fresh Cafe,21.575528,39.165103,Al Rawdah,TER_JED,4,4.8,Cafe,False,LOW,cash,0.0,0.0,New,2024-09-13,Sunday,Afternoon
+CUS_JED_0065,Al Saleh Roastery,21.595671,39.138069,Al Salamah,TER_JED,3,4.8,Cafe,False,MED,credit,18416.53,18583.34,Dormant,2025-06-21,Saturday,Afternoon
+CUS_JED_0066,Al Qahtani Trading Fresh Meat,21.591469,39.205538,Al Safa,TER_JED,3,3.9,Butchery,True,HIGH,credit,36841.64,34566.43,Active,2023-05-28,Wednesday,Midday
+CUS_JED_0067,Al Waha Banquet Kitchen,21.584939,39.131752,Al Salamah,TER_JED,2,4.5,Catering Kitchen,False,MED,cash,0.0,0.0,Active,2022-04-10,Tuesday,Afternoon
+CUS_JED_0068,Al Waha Fresh Sweets & Bakery,21.547702,39.144169,Al Hamra,TER_JED,2,4.3,Bakery,False,LOW,cash,0.0,0.0,New,2021-11-24,Sunday,Midday
+CUS_JED_0069,Al Dana Fresh Hospitality Supplies,21.587473,39.1426,Al Salamah,TER_JED,1,3.7,Hotel Kitchen,False,LOW,cash,0.0,0.0,Active,2021-06-24,Monday,Midday
+CUS_JED_0070,Al Ghamdi Hotel Kitchen,21.58507,39.149088,Al Salamah,TER_JED,5,3.5,Hotel Kitchen,False,MED,cash,0.0,0.0,At Risk,2023-02-05,Monday,Midday
+CUS_JED_0071,Al Baraka Fresh Meat,21.529246,39.160492,Al Hamra,TER_JED,4,3.9,Butchery,True,HIGH,credit,56977.7,27143.82,Active,2021-06-12,Tuesday,Midday
+CUS_JED_0072,Al Zahrani Oven,21.60498,39.126514,Al Zahra,TER_JED,4,4.4,Bakery,False,LOW,cash,0.0,0.0,Active,2024-10-16,Thursday,Morning
+CUS_JED_0073,Al Dossari Fresh Meat,21.600441,39.13666,Al Salamah,TER_JED,3,4.1,Butchery,True,MED,cash,0.0,0.0,Active,2022-12-25,Tuesday,Midday
+CUS_JED_0074,Al Malki Grill,21.574062,39.144985,Al Rawdah,TER_JED,4,4.3,Restaurant,False,HIGH,credit,79106.62,73169.03,Dormant,2023-01-16,Thursday,Morning
+CUS_JED_0075,Al Dossari Trading Market,21.587338,39.155411,Al Salamah,TER_JED,3,3.6,Supermarket,False,LOW,cash,0.0,0.0,New,2021-10-28,Tuesday,Afternoon
+CUS_JED_0076,Al Rawabi Fresh Hospitality Supplies,21.574475,39.128788,Al Salamah,TER_JED,5,4.0,Hotel Kitchen,False,LOW,cash,0.0,0.0,Active,2025-12-18,Wednesday,Afternoon
+CUS_JED_0077,Al Zahrani Trading Grill,21.568525,39.15425,Al Rawdah,TER_JED,3,4.4,Restaurant,False,LOW,cash,0.0,0.0,Active,2025-11-15,Tuesday,Morning
+CUS_JED_0078,Al Rajhi Grill,21.546889,39.1644,Al Rawdah,TER_JED,5,3.3,Restaurant,False,HIGH,credit,76691.8,17190.89,Active,2024-02-12,Saturday,Midday
+CUS_JED_0079,Al Mutairi Trading Corner Market,21.58746,39.149074,Al Salamah,TER_JED,3,3.5,Mini Market,False,LOW,credit,14228.79,8934.56,Dormant,2021-12-15,Tuesday,Afternoon
+CUS_JED_0080,Al Harbi Roastery,21.590469,39.160688,Al Salamah,TER_JED,5,3.7,Cafe,False,LOW,credit,11240.13,5283.73,Active,2023-04-07,Wednesday,Midday
+CUS_JED_0081,Al Rawabi Fresh Meat,21.604211,39.134818,Al Salamah,TER_JED,3,4.3,Butchery,True,LOW,cash,0.0,0.0,Active,2022-07-08,Tuesday,Afternoon
+CUS_JED_0082,Al Zahrani Restaurant,21.611034,39.118565,Al Salamah,TER_JED,5,3.6,Restaurant,False,LOW,cash,0.0,0.0,Active,2022-07-07,Tuesday,Morning
+CUS_JED_0083,Al Rawabi Al Safa Chilled Foods,21.591899,39.215641,Al Safa,TER_JED,5,4.2,Cold Store,True,HIGH,credit,87519.77,20050.01,New,2023-01-29,Wednesday,Afternoon
+CUS_JED_0084,Al Shammari Trading Sweets & Bakery,21.558798,39.166249,Al Rawdah,TER_JED,2,3.9,Bakery,False,LOW,credit,5969.94,626.33,New,2025-04-19,Thursday,Morning
+CUS_JED_0085,Al Rashid Trading Coffee House,21.628351,39.136582,Al Zahra,TER_JED,2,4.2,Cafe,False,LOW,credit,6089.54,1128.39,Active,2024-03-02,Tuesday,Afternoon
+CUS_JED_0086,Al Safa Fresh Mini Market,21.590162,39.142594,Al Salamah,TER_JED,5,3.8,Mini Market,False,LOW,cash,0.0,0.0,Active,2023-01-11,Sunday,Midday
+CUS_JED_0087,Al Zahra Cold Store,21.619642,39.128401,Al Zahra,TER_JED,2,4.2,Cold Store,True,LOW,cash,0.0,0.0,New,2024-06-13,Saturday,Afternoon
+CUS_JED_0088,Al Tazaj Butchery,21.618172,39.159051,Al Salamah,TER_JED,3,3.8,Butchery,True,LOW,credit,12790.92,3522.67,Active,2022-09-27,Sunday,Afternoon
+CUS_JED_0089,Al Saleh Banquet Kitchen,21.628727,39.128557,Al Zahra,TER_JED,3,2.9,Catering Kitchen,False,HIGH,credit,44938.35,4124.01,New,2023-01-19,Monday,Afternoon
+CUS_JED_0090,Al Dana Fresh Hotel Kitchen,21.574048,39.195444,Al Safa,TER_JED,4,3.8,Hotel Kitchen,False,HIGH,cash,0.0,0.0,Dormant,2022-02-13,Thursday,Morning
+CUS_JED_0091,Al Rashid Oven,21.526407,39.181394,Al Hamra,TER_JED,5,4.2,Bakery,False,MED,cash,0.0,0.0,Active,2022-12-01,Thursday,Midday
+CUS_JED_0092,Al Rashid Trading Baqala,21.592333,39.158545,Al Salamah,TER_JED,4,2.8,Mini Market,False,MED,credit,36243.08,9365.61,Active,2025-04-27,Monday,Morning
+CUS_JED_0093,Al Khaleej Fresh Meat Shop,21.617853,39.142838,Al Zahra,TER_JED,4,3.2,Butchery,True,MED,cash,0.0,0.0,Active,2022-02-21,Wednesday,Midday
+CUS_JED_0094,Al Riyadh Grocery,21.59828,39.222199,Al Safa,TER_JED,1,3.8,Grocery,False,HIGH,credit,86356.16,87235.8,At Risk,2025-04-09,Sunday,Afternoon
+CUS_JED_0095,Al Rashid Roastery,21.592526,39.245599,Al Safa,TER_JED,4,4.1,Cafe,False,LOW,credit,6685.66,499.59,Active,2021-12-02,Thursday,Morning
+CUS_JED_0096,Al Qahtani Trading Corner Market,21.568395,39.159638,Al Rawdah,TER_JED,5,3.5,Mini Market,False,LOW,credit,4940.48,1745.23,Active,2023-07-23,Saturday,Afternoon
+CUS_JED_0097,Al Shammari Bakery,21.574951,39.154834,Al Rawdah,TER_JED,2,4.0,Bakery,False,LOW,cash,0.0,0.0,Active,2024-07-26,Saturday,Afternoon
+CUS_JED_0098,Al Qahtani Trading Kitchen,21.520821,39.166898,Al Hamra,TER_JED,3,4.2,Restaurant,False,LOW,cash,0.0,0.0,Active,2021-11-23,Saturday,Morning
+CUS_JED_0099,Al Waha Al Rawdah Butchery,21.577284,39.159024,Al Rawdah,TER_JED,4,3.9,Butchery,True,LOW,cash,0.0,0.0,Active,2024-07-06,Wednesday,Afternoon
+CUS_JED_0100,Al Zahra Baqala,21.604178,39.128118,Al Zahra,TER_JED,4,4.2,Grocery,False,HIGH,cash,0.0,0.0,Active,2025-08-08,Tuesday,Midday
+CUS_DMM_0001,Al Noor Fresh Cafe,26.456625,50.084601,Al Mazruiyah,TER_DMM,4,4.5,Cafe,False,MED,cash,0.0,0.0,Active,2026-03-24,Wednesday,Morning
+CUS_DMM_0002,Al Mazruiyah Mini Market,26.463366,50.1014,Al Mazruiyah,TER_DMM,4,5.0,Mini Market,False,LOW,cash,0.0,0.0,Active,2026-03-23,Saturday,Morning
+CUS_DMM_0003,Al Zahrani Trading Butchery,26.419486,50.062948,Al Faisaliyah,TER_DMM,3,3.0,Butchery,True,MED,cash,0.0,0.0,Active,2022-10-20,Tuesday,Afternoon
+CUS_DMM_0004,Al Ghamdi Trading Corner Market,26.464947,50.10443,Al Mazruiyah,TER_DMM,1,4.0,Mini Market,False,HIGH,credit,40746.08,10267.92,Active,2025-09-30,Monday,Midday
+CUS_DMM_0005,Al Rajhi Grocery,26.431353,50.064446,Al Faisaliyah,TER_DMM,5,5.0,Grocery,False,HIGH,credit,56243.56,16049.22,Active,2023-09-16,Saturday,Morning
+CUS_DMM_0006,Al Waha Fresh Food Store,26.435155,50.044676,Al Nuzha,TER_DMM,1,4.4,Grocery,False,LOW,cash,0.0,0.0,Active,2024-05-19,Sunday,Midday
+CUS_DMM_0007,Al Shehri Trading Supermarket,26.407517,50.061515,Al Badiyah,TER_DMM,2,3.6,Supermarket,False,LOW,cash,0.0,0.0,Dormant,2023-07-01,Tuesday,Afternoon
+CUS_DMM_0008,Al Subaie Trading Hospitality Supplies,26.433509,50.102267,Al Faisaliyah,TER_DMM,3,4.7,Hotel Kitchen,False,LOW,credit,12659.52,11064.33,Active,2025-07-14,Monday,Midday
+CUS_DMM_0009,Al Baraka Baqala,26.420041,50.052273,Al Badiyah,TER_DMM,2,3.5,Mini Market,False,LOW,cash,0.0,0.0,Active,2024-01-09,Monday,Midday
+CUS_DMM_0010,Al Madina Al Faisaliyah Restaurant,26.426783,50.079301,Al Faisaliyah,TER_DMM,4,4.6,Restaurant,False,LOW,cash,0.0,0.0,Active,2025-05-12,Thursday,Afternoon
+CUS_DMM_0011,Al Mutairi Trading Bakery,26.409141,50.097835,Al Faisaliyah,TER_DMM,5,3.9,Bakery,False,MED,credit,34890.51,11880.92,Active,2024-07-11,Thursday,Afternoon
+CUS_DMM_0012,Al Qahtani Mini Market,26.465293,50.099668,Al Shati,TER_DMM,2,3.1,Mini Market,False,LOW,cash,0.0,0.0,Active,2026-01-10,Tuesday,Midday
+CUS_DMM_0013,Al Jazeera Al Faisaliyah Cafe,26.43747,50.079522,Al Faisaliyah,TER_DMM,2,3.3,Cafe,False,HIGH,cash,0.0,0.0,Active,2022-02-17,Saturday,Midday
+CUS_DMM_0014,Al Ghamdi Frozen Foods,26.413616,50.074377,Al Faisaliyah,TER_DMM,4,4.9,Cold Store,True,LOW,credit,14013.71,2521.72,Active,2023-11-29,Sunday,Morning
+CUS_DMM_0015,Al Madina Grill,26.430777,50.024396,Al Nuzha,TER_DMM,4,3.9,Restaurant,False,LOW,cash,0.0,0.0,Active,2022-03-07,Tuesday,Morning
+CUS_DMM_0016,Al Shehri Trading Hospitality Supplies,26.430629,50.009384,Al Nuzha,TER_DMM,5,4.0,Hotel Kitchen,False,HIGH,cash,0.0,0.0,Active,2024-07-31,Wednesday,Midday
+CUS_DMM_0017,Al Qahtani Food Store,26.399499,50.067453,Al Badiyah,TER_DMM,4,5.0,Grocery,False,MED,credit,17665.71,12780.02,Active,2025-02-03,Sunday,Midday
+CUS_DMM_0018,Al Shehri Trading Food Store,26.446387,50.039918,Al Nuzha,TER_DMM,5,3.4,Grocery,False,LOW,cash,0.0,0.0,At Risk,2026-02-11,Sunday,Morning
+CUS_DMM_0019,Al Qahtani Oven,26.499079,50.113145,Al Shati,TER_DMM,1,4.0,Bakery,False,LOW,cash,0.0,0.0,Active,2026-02-06,Tuesday,Afternoon
+CUS_DMM_0020,Al Malki Grocery,26.447828,50.098691,Al Mazruiyah,TER_DMM,3,3.9,Grocery,False,MED,credit,18141.82,12704.23,Active,2026-02-22,Monday,Morning
+CUS_DMM_0021,Al Rawabi Fresh Hyper Mini,26.42174,50.071723,Al Faisaliyah,TER_DMM,5,4.0,Supermarket,False,HIGH,cash,0.0,0.0,Active,2023-08-18,Wednesday,Morning
+CUS_DMM_0022,Al Zahrani Trading Hyper Mini,26.44198,50.087234,Al Mazruiyah,TER_DMM,4,4.1,Supermarket,False,LOW,cash,0.0,0.0,Active,2022-05-21,Thursday,Afternoon
+CUS_DMM_0023,Al Baraka Fresh Kitchen,26.430829,50.062214,Al Nuzha,TER_DMM,5,2.5,Restaurant,False,MED,cash,0.0,0.0,At Risk,2025-06-30,Saturday,Afternoon
+CUS_DMM_0024,Al Safa Catering Kitchen,26.445992,50.058971,Al Nuzha,TER_DMM,5,2.9,Catering Kitchen,False,MED,credit,31083.6,10142.94,Active,2023-03-15,Sunday,Afternoon
+CUS_DMM_0025,Al Noor Sweets & Bakery,26.424341,50.073929,Al Faisaliyah,TER_DMM,2,3.2,Bakery,False,MED,credit,19282.44,13251.81,At Risk,2023-11-13,Thursday,Midday
+CUS_DMM_0026,Al Subaie Trading Frozen Foods,26.461341,50.098429,Al Shati,TER_DMM,3,5.0,Cold Store,True,MED,cash,0.0,0.0,At Risk,2024-08-25,Thursday,Afternoon
+CUS_DMM_0027,Al Waha Mini Market,26.480637,50.128396,Al Shati,TER_DMM,1,4.4,Mini Market,False,MED,cash,0.0,0.0,Active,2022-05-13,Tuesday,Morning
+CUS_DMM_0028,Al Qassim Corner Market,26.415485,50.072004,Al Faisaliyah,TER_DMM,4,4.3,Mini Market,False,MED,credit,44484.66,26538.51,Active,2022-06-23,Tuesday,Afternoon
+CUS_DMM_0029,Al Shammari Trading Hotel Kitchen,26.419937,50.052267,Al Nuzha,TER_DMM,3,3.9,Hotel Kitchen,False,LOW,cash,0.0,0.0,New,2026-02-13,Tuesday,Morning
+CUS_DMM_0030,Al Madina Butchery,26.423979,50.087541,Al Faisaliyah,TER_DMM,4,4.2,Butchery,True,LOW,credit,12710.66,3019.13,Active,2023-08-22,Tuesday,Midday
+CUS_DMM_0031,Al Ghamdi Trading Hospitality Supplies,26.444035,50.110782,Al Mazruiyah,TER_DMM,3,3.4,Hotel Kitchen,False,LOW,cash,0.0,0.0,Active,2023-11-16,Tuesday,Midday
+CUS_DMM_0032,Al Anazi Trading Banquet Kitchen,26.477036,50.119861,Al Shati,TER_DMM,2,3.8,Catering Kitchen,False,MED,credit,36328.23,33316.9,At Risk,2022-09-07,Wednesday,Morning
+CUS_DMM_0033,Al Ghamdi Meat Shop,26.405773,50.04297,Al Badiyah,TER_DMM,4,4.5,Butchery,True,LOW,cash,0.0,0.0,At Risk,2021-11-07,Tuesday,Afternoon
+CUS_DMM_0034,Al Harbi Trading Hotel Kitchen,26.426118,50.072027,Al Faisaliyah,TER_DMM,4,4.6,Hotel Kitchen,False,MED,cash,0.0,0.0,Active,2022-08-06,Sunday,Morning
+CUS_DMM_0035,Al Qassim Fresh Butchery,26.420268,50.060888,Al Faisaliyah,TER_DMM,5,3.1,Butchery,True,LOW,cash,0.0,0.0,Active,2025-06-27,Saturday,Morning
+CUS_DMM_0036,Al Tazaj Hospitality Supplies,26.408924,50.042602,Al Badiyah,TER_DMM,3,5.0,Hotel Kitchen,False,LOW,cash,0.0,0.0,Active,2024-11-26,Wednesday,Afternoon
+CUS_DMM_0037,Al Manar Fresh Hyper Mini,26.378655,50.080029,Al Badiyah,TER_DMM,2,4.1,Supermarket,False,HIGH,credit,82914.07,23009.75,Active,2022-11-21,Tuesday,Afternoon
+CUS_DMM_0038,Al Rawabi Frozen Foods,26.401011,50.051849,Al Badiyah,TER_DMM,5,4.2,Cold Store,True,HIGH,credit,54787.27,5103.75,Active,2022-12-01,Monday,Morning
+CUS_DMM_0039,Al Ghamdi Roastery,26.447676,50.110077,Al Mazruiyah,TER_DMM,5,4.1,Cafe,False,LOW,cash,0.0,0.0,At Risk,2025-07-31,Tuesday,Midday
+CUS_DMM_0040,Al Mutairi Trading Catering Kitchen,26.449793,50.091627,Al Mazruiyah,TER_DMM,3,4.0,Catering Kitchen,False,LOW,cash,0.0,0.0,New,2025-09-01,Wednesday,Midday
+CUS_DMM_0041,Al Mutairi Supermarket,26.431666,50.057094,Al Faisaliyah,TER_DMM,3,3.3,Supermarket,False,HIGH,credit,93861.25,16051.73,Active,2021-09-10,Monday,Afternoon
+CUS_DMM_0042,Al Mutairi Cold Store,26.47847,50.114549,Al Shati,TER_DMM,4,3.9,Cold Store,True,MED,cash,0.0,0.0,Active,2024-09-27,Tuesday,Morning
+CUS_DMM_0043,Al Nakheel Fresh Oven,26.402308,50.06307,Al Badiyah,TER_DMM,1,3.7,Bakery,False,MED,credit,39317.88,5016.88,Active,2024-04-15,Saturday,Afternoon
+CUS_DMM_0044,Al Faisaliyah Supermarket,26.419435,50.081063,Al Faisaliyah,TER_DMM,4,3.5,Supermarket,False,LOW,cash,0.0,0.0,Active,2025-05-28,Thursday,Afternoon
+CUS_DMM_0045,Al Othman Trading Butchery,26.452697,50.074785,Al Mazruiyah,TER_DMM,4,4.6,Butchery,True,MED,cash,0.0,0.0,Active,2021-06-14,Wednesday,Afternoon
+CUS_DMM_0046,Al Madina Fresh Catering Kitchen,26.453422,50.09942,Al Mazruiyah,TER_DMM,3,4.5,Catering Kitchen,False,LOW,cash,0.0,0.0,Active,2023-03-26,Monday,Midday
+CUS_DMM_0047,Al Rajhi Hospitality Supplies,26.466855,50.108958,Al Mazruiyah,TER_DMM,5,3.0,Hotel Kitchen,False,MED,cash,0.0,0.0,Active,2025-01-31,Tuesday,Midday
+CUS_DMM_0048,Al Saleh Fresh Meat,26.43369,50.088341,Al Mazruiyah,TER_DMM,1,4.0,Butchery,True,LOW,cash,0.0,0.0,Dormant,2025-05-29,Sunday,Afternoon
+CUS_DMM_0049,Al Rashid Chilled Foods,26.439529,50.034173,Al Nuzha,TER_DMM,4,4.1,Cold Store,True,LOW,cash,0.0,0.0,Active,2026-04-29,Wednesday,Morning
+CUS_DMM_0050,Al Riyadh Fresh Supermarket,26.439593,50.088509,Al Mazruiyah,TER_DMM,4,3.2,Supermarket,False,HIGH,credit,95266.8,63773.37,Active,2023-04-08,Monday,Midday
+CUS_DMM_0051,Al Jazeera Baqala,26.423303,50.026301,Al Nuzha,TER_DMM,5,3.5,Mini Market,False,MED,cash,0.0,0.0,Active,2022-07-02,Wednesday,Morning
+CUS_DMM_0052,Al Baraka Al Badiyah Meat Shop,26.413965,50.046764,Al Badiyah,TER_DMM,5,5.0,Butchery,True,LOW,credit,13105.12,1195.31,Active,2021-11-11,Tuesday,Midday
+CUS_DMM_0053,Al Dossari Trading Grocery,26.475655,50.114725,Al Shati,TER_DMM,5,3.5,Grocery,False,HIGH,credit,54617.51,15203.22,Active,2023-09-03,Tuesday,Midday
+CUS_DMM_0054,Al Madina Fresh Hotel Kitchen,26.409986,50.051463,Al Badiyah,TER_DMM,4,4.1,Hotel Kitchen,False,LOW,credit,6850.32,371.45,Active,2021-12-26,Tuesday,Afternoon
+CUS_DMM_0055,Al Riyadh Fresh Corner Market,26.46253,50.042092,Al Nuzha,TER_DMM,3,4.6,Mini Market,False,HIGH,cash,0.0,0.0,Active,2025-04-05,Sunday,Midday
+CUS_DMM_0056,Al Zahrani Restaurant,26.394181,50.05826,Al Badiyah,TER_DMM,3,5.0,Restaurant,False,LOW,credit,13789.63,10890.06,Active,2025-05-25,Thursday,Morning
+CUS_DMM_0057,Al Nakheel Roastery,26.39504,50.081487,Al Badiyah,TER_DMM,4,4.4,Cafe,False,MED,cash,0.0,0.0,At Risk,2021-07-09,Saturday,Afternoon
+CUS_DMM_0058,Al Nada Fresh Butchery,26.421866,50.086553,Al Faisaliyah,TER_DMM,4,4.5,Butchery,True,LOW,credit,5285.6,1377.22,Active,2025-05-04,Sunday,Midday
+CUS_DMM_0059,Al Harbi Trading Catering Kitchen,26.435202,50.058854,Al Faisaliyah,TER_DMM,4,3.6,Catering Kitchen,False,MED,credit,13990.44,1145.52,Active,2021-08-18,Wednesday,Midday
+CUS_DMM_0060,Al Dana Chilled Foods,26.467313,50.111464,Al Shati,TER_DMM,1,4.3,Cold Store,True,LOW,cash,0.0,0.0,New,2025-02-28,Tuesday,Morning
+CUS_DMM_0061,Al Othman Trading Corner Market,26.430201,50.061807,Al Faisaliyah,TER_DMM,2,4.2,Mini Market,False,LOW,cash,0.0,0.0,At Risk,2025-12-20,Sunday,Morning
+CUS_DMM_0062,Al Ghamdi Trading Sweets & Bakery,26.454976,50.103241,Al Mazruiyah,TER_DMM,4,4.6,Bakery,False,MED,credit,14056.54,4292.5,Active,2025-07-09,Saturday,Midday
+CUS_DMM_0063,Al Rawabi Al Mazruiyah Butchery,26.457491,50.101975,Al Mazruiyah,TER_DMM,5,4.0,Butchery,True,MED,credit,25978.85,7812.17,Active,2026-02-22,Sunday,Morning
+CUS_DMM_0064,Al Nada Fresh Cold Store,26.383395,50.064101,Al Badiyah,TER_DMM,4,4.1,Cold Store,True,LOW,cash,0.0,0.0,Dormant,2026-03-31,Thursday,Afternoon
+CUS_DMM_0065,Al Subaie Chilled Foods,26.473158,50.096338,Al Shati,TER_DMM,4,3.4,Cold Store,True,LOW,credit,7346.7,3244.04,Active,2023-04-22,Wednesday,Afternoon
+CUS_DMM_0066,Al Noor Grill,26.44556,50.042803,Al Nuzha,TER_DMM,4,4.4,Restaurant,False,LOW,cash,0.0,0.0,Active,2022-04-16,Wednesday,Midday
+CUS_DMM_0067,Al Khaleej Corner Market,26.402419,50.059074,Al Badiyah,TER_DMM,3,4.5,Mini Market,False,MED,cash,0.0,0.0,At Risk,2024-06-30,Thursday,Midday
+CUS_DMM_0068,Al Zahrani Trading Corner Market,26.396289,50.059908,Al Badiyah,TER_DMM,5,3.7,Mini Market,False,LOW,cash,0.0,0.0,At Risk,2022-01-28,Tuesday,Afternoon
+CUS_DMM_0069,Al Jazeera Al Faisaliyah Fresh Meat,26.423307,50.074712,Al Faisaliyah,TER_DMM,5,4.1,Butchery,True,LOW,credit,9138.28,2721.13,Active,2023-06-13,Saturday,Morning
+CUS_DMM_0070,Al Khaleej Fresh Banquet Kitchen,26.396709,50.074488,Al Badiyah,TER_DMM,1,3.5,Catering Kitchen,False,HIGH,credit,94499.23,48042.12,Active,2023-07-04,Thursday,Morning
+CUS_DMM_0071,Al Manar Chilled Foods,26.426096,50.07307,Al Faisaliyah,TER_DMM,2,4.8,Cold Store,True,HIGH,credit,94517.05,89494.18,At Risk,2023-08-12,Sunday,Midday
+CUS_DMM_0072,Al Tazaj Baqala,26.472313,50.125381,Al Shati,TER_DMM,1,3.2,Mini Market,False,MED,cash,0.0,0.0,New,2023-12-08,Tuesday,Afternoon
+CUS_DMM_0073,Al Anazi Trading Market,26.436707,50.054488,Al Nuzha,TER_DMM,1,4.0,Supermarket,False,MED,cash,0.0,0.0,Dormant,2024-02-13,Wednesday,Morning
+CUS_DMM_0074,Al Riyadh Fresh Market,26.445699,50.036795,Al Nuzha,TER_DMM,4,4.8,Supermarket,False,LOW,credit,10547.78,2445.48,Active,2023-01-22,Tuesday,Morning
+CUS_DMM_0075,Al Rashid Hospitality Supplies,26.495988,50.107835,Al Shati,TER_DMM,3,3.8,Hotel Kitchen,False,HIGH,credit,93134.49,28705.19,Active,2022-05-29,Wednesday,Afternoon
+CUS_DMM_0076,Al Rashid Sweets & Bakery,26.464467,50.116067,Al Mazruiyah,TER_DMM,4,3.7,Bakery,False,HIGH,credit,82452.56,49351.42,New,2021-09-22,Sunday,Midday
+CUS_DMM_0077,Al Anazi Trading Roastery,26.465368,50.108855,Al Shati,TER_DMM,3,3.3,Cafe,False,LOW,credit,2806.43,2845.0,Churned,2026-04-11,Thursday,Afternoon
+CUS_DMM_0078,Al Manar Hospitality Supplies,26.423355,50.030672,Al Nuzha,TER_DMM,4,3.6,Hotel Kitchen,False,LOW,cash,0.0,0.0,At Risk,2023-08-01,Tuesday,Afternoon
+CUS_DMM_0079,Al Tazaj Fresh Baqala,26.447709,50.099146,Al Mazruiyah,TER_DMM,5,4.9,Grocery,False,MED,credit,18796.94,16753.88,Dormant,2024-06-22,Thursday,Afternoon
+CUS_DMM_0080,Al Shammari Grill,26.458857,50.124783,Al Shati,TER_DMM,3,3.9,Restaurant,False,LOW,cash,0.0,0.0,At Risk,2022-01-29,Tuesday,Morning
+CUS_DMM_0081,Al Jazeera Fresh Coffee House,26.401543,50.067184,Al Badiyah,TER_DMM,3,3.4,Cafe,False,LOW,credit,9591.82,1213.41,Active,2024-08-14,Wednesday,Midday
+CUS_DMM_0082,Al Faisaliyah Oven,26.432506,50.080693,Al Faisaliyah,TER_DMM,5,4.3,Bakery,False,LOW,cash,0.0,0.0,At Risk,2024-06-15,Wednesday,Midday
+CUS_DMM_0083,Al Faisaliyah Kitchen,26.431456,50.109477,Al Faisaliyah,TER_DMM,3,3.6,Restaurant,False,LOW,cash,0.0,0.0,Active,2024-07-22,Thursday,Morning
+CUS_DMM_0084,Al Nakheel Chilled Foods,26.42222,50.070764,Al Faisaliyah,TER_DMM,4,3.7,Cold Store,True,LOW,cash,0.0,0.0,New,2023-03-18,Tuesday,Morning
+CUS_DMM_0085,Al Badiyah Roastery,26.394922,50.073649,Al Badiyah,TER_DMM,3,4.8,Cafe,False,HIGH,credit,76518.1,21512.93,Active,2022-05-07,Wednesday,Afternoon
+CUS_DMM_0086,Al Safa Grill,26.421773,50.068133,Al Faisaliyah,TER_DMM,5,4.3,Restaurant,False,MED,cash,0.0,0.0,Active,2026-01-21,Thursday,Afternoon
+CUS_DMM_0087,Al Waha Corner Market,26.395881,50.066658,Al Badiyah,TER_DMM,3,4.1,Mini Market,False,MED,cash,0.0,0.0,Active,2021-09-18,Sunday,Midday
+CUS_DMM_0088,Al Rajhi Trading Kitchen,26.416631,50.062762,Al Nuzha,TER_DMM,4,5.0,Restaurant,False,HIGH,cash,0.0,0.0,Active,2023-08-05,Thursday,Morning
+CUS_DMM_0089,Al Tazaj Fresh Banquet Kitchen,26.426799,50.038424,Al Nuzha,TER_DMM,3,4.2,Catering Kitchen,False,LOW,credit,11697.36,744.6,Active,2023-11-12,Tuesday,Midday
+CUS_DMM_0090,Al Khaleej Hospitality Supplies,26.431966,50.086882,Al Faisaliyah,TER_DMM,3,5.0,Hotel Kitchen,False,HIGH,credit,97207.85,28096.09,Active,2024-07-09,Sunday,Morning
+CUS_DMM_0091,Al Safa Fresh Catering Kitchen,26.426207,50.068561,Al Faisaliyah,TER_DMM,4,3.2,Catering Kitchen,False,LOW,cash,0.0,0.0,Active,2025-01-11,Wednesday,Morning
+CUS_DMM_0092,Al Dana Catering Kitchen,26.461869,50.111983,Al Shati,TER_DMM,3,5.0,Catering Kitchen,False,LOW,cash,0.0,0.0,Active,2024-06-27,Tuesday,Afternoon
+CUS_DMM_0093,Al Qassim Fresh Baqala,26.427871,50.046114,Al Nuzha,TER_DMM,3,4.0,Mini Market,False,LOW,cash,0.0,0.0,Active,2025-03-04,Thursday,Morning
+CUS_DMM_0094,Al Rawabi Fresh Corner Market,26.441583,50.110377,Al Faisaliyah,TER_DMM,3,3.7,Mini Market,False,LOW,cash,0.0,0.0,Active,2022-04-07,Wednesday,Afternoon
+CUS_DMM_0095,Al Baraka Fresh Fresh Meat,26.442588,50.109333,Al Mazruiyah,TER_DMM,4,4.4,Butchery,True,HIGH,credit,58189.33,57148.5,At Risk,2025-07-09,Monday,Midday
+CUS_DMM_0096,Al Dana Fresh Roastery,26.422896,50.066042,Al Badiyah,TER_DMM,2,3.8,Cafe,False,MED,cash,0.0,0.0,Active,2022-03-12,Wednesday,Morning
+CUS_DMM_0097,Al Anazi Trading Baqala,26.454752,50.110145,Al Mazruiyah,TER_DMM,5,4.5,Mini Market,False,LOW,cash,0.0,0.0,New,2022-08-08,Saturday,Afternoon
+CUS_DMM_0098,Al Baraka Fresh Hospitality Supplies,26.453813,50.109616,Al Mazruiyah,TER_DMM,5,4.6,Hotel Kitchen,False,MED,cash,0.0,0.0,Active,2024-03-21,Wednesday,Morning
+CUS_DMM_0099,Al Saleh Grocery,26.417665,50.066856,Al Badiyah,TER_DMM,4,3.9,Grocery,False,HIGH,credit,106318.37,31040.93,Active,2024-02-14,Monday,Morning
+CUS_DMM_0100,Al Nakheel Kitchen,26.471752,50.127578,Al Shati,TER_DMM,3,3.6,Restaurant,False,LOW,credit,6802.66,3901.63,At Risk,2021-12-27,Thursday,Afternoon
